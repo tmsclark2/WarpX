@@ -395,9 +395,10 @@ WarpX::InitData ()
     }
     if (restart_chkfile.empty())
     {
+        SetFinestLevel(max_level);
         ComputeDt();
-        WarpX::PrintDtDxDyDz();
         InitFromScratch();
+        WarpX::PrintDtDxDyDz();
         InitDiagnostics();
     }
     else
@@ -428,6 +429,7 @@ WarpX::InitData ()
 
     if (ParallelDescriptor::IOProcessor()) {
         std::cout << "\nGrids Summary:\n";
+        
         printGridSummary(std::cout, 0, finestLevel());
     }
 

@@ -921,6 +921,9 @@ public:
     static amrex::Real moving_window_v;
     static bool fft_do_time_averaging;
 
+    //Parameter to remove the fine patch at a given time step
+    static int end_fine_patch_step;
+
     // these should be private, but can't due to Cuda limitations
     static void ComputeDivB (amrex::MultiFab& divB, int const dcomp,
                              const std::array<const amrex::MultiFab* const, 3>& B,

@@ -448,6 +448,22 @@ WarpX::OneStep_nosub (Real cur_time)
     //               from p^{n-1/2} to p^{n+1/2}
     // Deposit current j^{n+1/2}
     // Deposit charge density rho^{n}
+    if(istep[0]+1==end_fine_patch_step){
+        auto& warpx = WarpX::GetInstance();
+        auto& rho_fp_temp = m_hybrid_pic_model->rho_fp_temp;
+        auto& current_fp_temp = m_hybrid_pic_model->current_fp_temp;
+        SyncCurrentAndRho();
+        // SyncCurrent(current_fp_temp, current_cp, current_buf);
+        // SyncRho(rho_fp, rho_cp, charge_buf);
+        const int coarse_lev = 0;
+        regrid(coarse_lev, cur_time);
+        mypc->Redistribute();
+        warpx.ComputeDt();
+        PrintDtDxDyDz();
+        Print() << Utils::TextMsg::Info(
+                    "Remove the patch");
+    }
+
 
     ExecutePythonCallback("particlescraper");
     ExecutePythonCallback("beforedeposition");
@@ -809,10 +825,12 @@ WarpX::OneStep_sub1 (Real curtime)
     );
 
     // TODO: we could save some charge depositions
+    const int fine_lev = finestLevel();
+    const int coarse_lev = 0;
 
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(finest_level == 1, "Must have exactly two levels");
-    const int fine_lev = 1;
-    const int coarse_lev = 0;
+
+    // TODO: we could save some charge depositions
 
     // i) Push particles and fields on the fine patch (first fine step)
     PushParticlesandDepose(fine_lev, curtime, DtType::FirstHalf);
@@ -957,6 +975,17 @@ WarpX::OneStep_sub1 (Real curtime)
 
     // Synchronize nodal points at the end of the time step
     if (do_pml) NodalSyncPML();
+    if(istep[0]+1==end_fine_patch_step){
+        SyncCurrentAndRho();
+        // SyncCurrent(current_fp_temp, current_cp, current_buf);
+        // SyncRho(rho_fp, rho_cp, charge_buf);
+        regrid(coarse_lev, curtime);
+        mypc->Redistribute();
+                Print() << Utils::TextMsg::Info(
+                    "Remove the patch");
+        PrintDtDxDyDz();
+        do_subcycling=0;
+    }
 }
 
 void
