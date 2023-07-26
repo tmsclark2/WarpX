@@ -52,7 +52,7 @@ ParticleMomentum::ParticleMomentum (std::string rd_name)
 
     if (ParallelDescriptor::IOProcessor())
     {
-        if (m_IsNotRestart)
+        if (m_write_header)
         {
             // Open file
             std::ofstream ofs{m_path + m_rd_name + "." + m_extension, std::ofstream::out};
@@ -167,10 +167,7 @@ void ParticleMomentum::ComputeDiags (int step)
         amrex::Real Ws = amrex::get<3>(r);
 
         // Reduced sum over MPI ranks
-        ParallelDescriptor::ReduceRealSum(Px, ParallelDescriptor::IOProcessorNumber());
-        ParallelDescriptor::ReduceRealSum(Py, ParallelDescriptor::IOProcessorNumber());
-        ParallelDescriptor::ReduceRealSum(Pz, ParallelDescriptor::IOProcessorNumber());
-        ParallelDescriptor::ReduceRealSum(Ws, ParallelDescriptor::IOProcessorNumber());
+        ParallelDescriptor::ReduceRealSum({Px,Py,Pz,Ws}, ParallelDescriptor::IOProcessorNumber());
 
         // Accumulate sum of weights over all species (must come after MPI reduction of Ws)
         Wtot += Ws;

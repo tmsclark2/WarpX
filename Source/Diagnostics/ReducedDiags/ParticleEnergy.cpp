@@ -54,7 +54,7 @@ ParticleEnergy::ParticleEnergy (std::string rd_name)
 
     if (ParallelDescriptor::IOProcessor())
     {
-        if ( m_IsNotRestart )
+        if ( m_write_header )
         {
             // open file
             std::ofstream ofs{m_path + m_rd_name + "." + m_extension, std::ofstream::out};
@@ -159,8 +159,7 @@ void ParticleEnergy::ComputeDiags (int step)
         }
 
         // Reduced sum over MPI ranks
-        ParallelDescriptor::ReduceRealSum(Etot, ParallelDescriptor::IOProcessorNumber());
-        ParallelDescriptor::ReduceRealSum(Ws  , ParallelDescriptor::IOProcessorNumber());
+        ParallelDescriptor::ReduceRealSum({Etot,Ws}, ParallelDescriptor::IOProcessorNumber());
 
         // Accumulate sum of weights over all species (must come after MPI reduction of Ws)
         Wtot += Ws;
