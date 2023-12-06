@@ -10,6 +10,7 @@
 #include "Utils/TextMsg.H"
 
 #include <AMReX_ParmParse.H>
+#include <AMReX_ParallelDescriptor.H>
 
 #include <ablastr/constant.H>
 
@@ -51,6 +52,8 @@ RadiationHandler::RadiationHandler()
     /* Initialize the Fab with the field in function of angle and frequency */
     //int numcomps = 4;
     //BaseFab<Complex> fab(bx,numcomps);
+
+    m_radiation_data = amrex::Gpu::DeviceVector<amrex::Real>(m_I*m_J*m_W*2);
 }
 
 void RadiationHandler::add_radiation_contribution
@@ -124,18 +127,19 @@ void RadiationHandler::add_radiation_contribution
                     //Calculation of ei(omegat-n.r)
                     
                     //omega effective calculé
-                    amrex::Real omega_calc = 0
-                    for(int i_om=0, i_om<m_omega_points,i_om++){
-                        for(int i_x=0, i_x<m_det_pts[0], i_x++){
-                            for(int i_y=0, i_y<m_det_pts[1], i_y++){
-                        omega_calc = omega_calc + m_d_omega
-                        amrex::Real dephas= omega_calc*current_time+
-                        amrex::Complex eiomega=(amrex::cos(dephas), amrex::sin(dephas))
+                    amrex::Real omega_calc = 0;
+                    for(int i_om=0; i_om<m_omega_points; i_om++){
+                        for(int i_x=0; i_x<m_det_pts[0]; i_x++){
+                            for(int i_y=0; i_y<m_det_pts[1]; i_y++){
+                        //omega_calc = omega_calc + m_d_omega
+                       // amrex::Real dephas= omega_calc*current_time+
+                       // amrex::Complex eiomega=(amrex::cos(dephas), amrex::sin(dephas))
+                    }
                     }
                     }
 
 
-                 });
+                   });
 
 //                 const int total_partdiag_size = amrex::Scan::ExclusiveSum(np,Flag,IndexLocation);
 //                 auto& ptile_dst = pc_dst.DefineAndReturnParticleTile(lev, pti.index(), pti.LocalTileIndex() );
@@ -176,5 +180,25 @@ void RadiationHandler::add_detector
         }
 
     m_d_omega=m_omega_range[1]-m_omega_range[0]/static_cast<double>(m_omega_points);
+    }
+}
+
+void RadiationHandler::gather_and_write_radiation(const std::string& filename)
+{
+    auto radiation_data_cpu = amrex::Vector<amrex::Real>(m_I*m_J*m_W*2);
+    amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
+        m_radiation_data.begin(), m_radiation_data.end(), radiation_data_cpu.begin());
+    amrex::Gpu::streamSynchronize();
+
+    amrex::ParallelDescriptor::ReduceRealSum(radiation_data_cpu.data(), radiation_data_cpu.size());
+
+    if (amrex::ParallelDescriptor::IOProcessor() ){
+        auto of = std::ofstream(filename, std::ios::binary);
+
+        for (const auto& d : radiation_data_cpu){
+            of << static_cast<double>(d);
+        }
+
+        of.close();
     }
 }
