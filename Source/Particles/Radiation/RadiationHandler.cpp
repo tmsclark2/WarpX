@@ -172,7 +172,7 @@ void RadiationHandler::add_radiation_contribution
 #ifdef AMREX_USE_OMP
             #pragma omp parallel
 #endif
-            {   amrex::Print() << "Je brille <<" << std::endl;
+            {
 
                 for (WarpXParIter pti(*pc, lev); pti.isValid(); ++pti)
                 {
@@ -309,12 +309,12 @@ void RadiationHandler::add_radiation_contribution
 
 void RadiationHandler::gather_and_write_radiation(const std::string& filename)
 {
-    auto radiation_data_cpu = amrex::Vector<amrex::Real>(m_det_pts[0]*m_det_pts[1]*m_omega_points);
+    auto radiation_calculation_cpu = amrex::Vector<amrex::Real>(m_det_pts[0]*m_det_pts[1]*m_omega_points);
     amrex::Gpu::copyAsync(amrex::Gpu::deviceToHost,
-        m_radiation_calculation.begin(), m_radiation_calculation.end(), radiation_data_cpu.begin());
+        m_radiation_calculation.begin(), m_radiation_calculation.end(), radiation_calculation_cpu.begin());
     amrex::Gpu::streamSynchronize();
 
-    amrex::ParallelDescriptor::ReduceRealSum(radiation_data_cpu.data(), radiation_data_cpu.size());
+    amrex::ParallelDescriptor::ReduceRealSum(radiation_calculation_cpu.data(), radiation_calculation_cpu.size());
 
     if (amrex::ParallelDescriptor::IOProcessor() ){
         auto of = std::ofstream(filename, std::ios::binary);
@@ -335,17 +335,17 @@ void RadiationHandler::gather_and_write_radiation(const std::string& filename)
             m_omegas.begin(), m_omegas.end(), omegas_cpu.begin());
         amrex::Gpu::streamSynchronize();
 
-
         int idx = 0;
         for(int i_om=0; i_om < m_omega_points; ++i_om){
             for (int i_det = 0; i_det < how_many; ++i_det)
             {
-                 of << omegas_cpu[i_om] << " " << det_pos_x_cpu[i_det] << " " << det_pos_y_cpu[i_det] << " " << det_pos_z_cpu[i_det] << " " << radiation_data_cpu[++idx] << "\n";
+                 of << omegas_cpu[i_om] << " " << det_pos_x_cpu[i_det] << " " << det_pos_y_cpu[i_det] << " " << det_pos_z_cpu[i_det] << " " << radiation_calculation_cpu[++idx] << "\n";
             }
         }
 
         of.close();
     }
+
 }
 
 void RadiationHandler::Integral_overtime(const amrex::Real dt)
@@ -354,11 +354,13 @@ void RadiationHandler::Integral_overtime(const amrex::Real dt)
     const auto how_many = m_det_pts[0]*m_det_pts[1];
     auto p_radiation_data = m_radiation_data.dataPtr();
     m_radiation_calculation.resize(how_many*m_omega_points);
-    for(int idx=0; idx<m_omega_points*how_many; ++idx){
-            const int idx0 = idx*3;
-            const int idx1 = idx0 + 1;
-            const int idx2 = idx0 + 2;
-            amrex::Print() << (amrex::norm(p_radiation_data[idx0])+amrex::norm(p_radiation_data[idx1])+amrex::norm(p_radiation_data[idx2])) << std::endl;
-            m_radiation_calculation[idx]=(amrex::norm(p_radiation_data[idx0])+amrex::norm(p_radiation_data[idx1])+amrex::norm(p_radiation_data[idx2]))*factor;
-                            }
+    auto p_radiation_calculation = m_radiation_calculation.dataPtr();
+
+    amrex::ParallelFor(m_omega_points*how_many, [=] AMREX_GPU_DEVICE(int idx){
+        const int idx0 = idx*3;
+        const int idx1 = idx0 + 1;
+        const int idx2 = idx0 + 2;
+        p_radiation_calculation[idx]=
+            (amrex::norm(p_radiation_data[idx0])+amrex::norm(p_radiation_data[idx1])+amrex::norm(p_radiation_data[idx2]))*factor;
+    });
 }
