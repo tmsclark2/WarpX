@@ -90,6 +90,10 @@ ScatteringProcess::parseProcessType(const std::string& scattering_process)
         return ScatteringProcessType::EXCITATION;
     } else if (scattering_process.find("forward") != std::string::npos) {
         return ScatteringProcessType::FORWARD;
+    } else if (scattering_process.find("attachment") != std::string::npos) {
+        return ScatteringProcessType::ATTACHMENT;
+    } else if (scattering_process.find("three_body") != std::string::npos) {
+        return ScatteringProcessType::THREE_BODY;
     } else {
         return ScatteringProcessType::INVALID;
     }

@@ -53,7 +53,7 @@
 template <int N, typename DstPC, typename DstTile, typename SrcTile, typename Index,
           typename TransFunc, typename CopyFunc,
           amrex::EnableIf_t<std::is_integral_v<Index>, int> foo = 0>
-Index filterCopyTransformParticles (DstPC& pc, DstTile& dst, SrcTile& src,
+Index filterCopyTransformDeleteParticles (DstPC& pc, DstTile& dst, SrcTile& src,
                                     Index* mask, Index dst_index,
                                     CopyFunc&& copy, TransFunc&& transform) noexcept
 {
@@ -61,6 +61,7 @@ Index filterCopyTransformParticles (DstPC& pc, DstTile& dst, SrcTile& src,
 
     const auto np = src.numParticles();
     if (np == 0) { return 0; }
+
     Gpu::DeviceVector<Index> offsets(np);
     auto total = amrex::Scan::ExclusiveSum(np, mask, offsets.data());
     const Index num_added = N * total;
@@ -144,7 +145,7 @@ Index filterCopyTransformParticles (DstPC& pc, DstTile& dst, SrcTile& src,
  */
 template <int N, typename DstPC, typename DstTile, typename SrcTile, typename Index,
           typename PredFunc, typename TransFunc, typename CopyFunc>
-Index filterCopyTransformParticles (DstPC& pc, DstTile& dst, SrcTile& src, Index dst_index,
+Index filterCopyTransformDeleteParticles (DstPC& pc, DstTile& dst, SrcTile& src, Index dst_index,
                                     PredFunc&& filter, CopyFunc&& copy, TransFunc&& transform) noexcept
 {
     using namespace amrex;
@@ -214,7 +215,7 @@ Index filterCopyTransformParticles (DstPC& pc, DstTile& dst, SrcTile& src, Index
 template <int N, typename DstPC, typename DstTile, typename SrcTile, typename Index,
           typename TransFunc, typename CopyFunc1, typename CopyFunc2,
           amrex::EnableIf_t<std::is_integral_v<Index>, int> foo = 0>
-Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTile& dst2, SrcTile& src, Index* mask,
+Index filterCopyTransformDeleteParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTile& dst2, SrcTile& src, Index* mask,
                                     Index dst1_index, Index dst2_index,
                                     CopyFunc1&& copy1, CopyFunc2&& copy2,
                                     TransFunc&& transform) noexcept
@@ -223,16 +224,15 @@ Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTi
 
     auto np = src.numParticles();
     if (np == 0) { return 0; }
-    Gpu::DeviceVector<Index> offsets(np);
 
+    Gpu::DeviceVector<Index> offsets(np);
     auto total = amrex::Scan::ExclusiveSum(np, mask, offsets.data());
     const Index num_added = N * total;
     auto old_np1 = dst1.size();
     auto new_np1 = std::max(dst1_index + num_added, dst1.numParticles());
-    dst1.resize(new_np1);    
+    dst1.resize(new_np1);
 
     auto old_np2 = dst2.size();
-
     auto new_np2 = std::max(dst2_index + num_added, dst2.numParticles());
     dst2.resize(new_np2);
 
@@ -242,14 +242,13 @@ Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTi
     const auto dst1_data = dst1.getParticleTileData();
     const auto dst2_data = dst2.getParticleTileData();
 
-
     amrex::ParallelForRNG(np,
     [=] AMREX_GPU_DEVICE (int i, amrex::RandomEngine const& engine) noexcept
     {
         if (mask[i])
         {
             for (int j = 0; j < N; ++j)
-            {     
+            {
                 copy1(dst1_data, src_data, i, N*p_offsets[i] + dst1_index + j, engine);
                 copy2(dst2_data, src_data, i, N*p_offsets[i] + dst2_index + j, engine);
             }
@@ -288,6 +287,7 @@ Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTi
 #endif
                                        pc2.getIonizationInitialLevel(),
                                        old_np2, new_np2);
+
     Gpu::synchronize();
     return num_added;
 }
@@ -338,7 +338,7 @@ Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTi
  */
 template <int N, typename DstPC, typename DstTile, typename SrcTile, typename Index,
           typename PredFunc, typename TransFunc, typename CopyFunc1, typename CopyFunc2>
-Index filterCopyTransformParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTile& dst2, SrcTile& src,
+Index filterCopyTransformDeleteParticles (DstPC& pc1, DstPC& pc2, DstTile& dst1, DstTile& dst2, SrcTile& src,
                                     Index dst1_index, Index dst2_index,
                                     PredFunc&& filter, CopyFunc1&& copy1, CopyFunc2&& copy2,
                                     TransFunc&& transform) noexcept

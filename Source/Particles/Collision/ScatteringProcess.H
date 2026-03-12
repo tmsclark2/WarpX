@@ -25,6 +25,8 @@ enum class ScatteringProcessType {
     EXCITATION,
     IONIZATION,
     FORWARD,
+    ATTACHMENT,
+    THREE_BODY
 };
 
 class ScatteringProcess

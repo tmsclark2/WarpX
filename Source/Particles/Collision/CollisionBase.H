@@ -36,6 +36,7 @@ public:
 protected:
 
     amrex::Vector<std::string> m_species_names;
+    std::string m_photo_species_name;
     int m_ndt;
 
     bool m_use_global_debye_length = false;
