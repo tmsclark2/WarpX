@@ -146,7 +146,27 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
             if (photo_ionization_flag) {
                 pp_collision_name.get("photoionization_species", photoioni_species);
                 m_photo_species_name = photoioni_species;
-                amrex::Print() << photoioni_species << "\n";
+                amrex::Vector<double> frequencies_photo;
+                pp_collision_name.queryarr("frequencies_photo", frequencies_photo);
+                f1 = frequencies_photo[0];
+                f2 = frequencies_photo[1];
+                //const double f1 = 2.925e15; // Hz
+                //const double f2 = 3.059e15; // Hz
+                pp_collision_name.query("O2_P0", PO2);
+                pp_collision_name.query("pq", pq);
+                pp_collision_name.query("p_E", q_E);
+                pp_collision_name.query("O2_pressure", p);
+
+                //PO2 = 150.0;   // Torr
+                K1 = 3.5 * PO2; // Torr-1 m^-1
+                K2 = 200.0 * PO2; // Torr-1 m^-1
+                //pq = 0.04; // quenching pressure ratio
+                //p = 750; // pressure in Torr
+                q_press = p/(p+pq); // quenching efficiency pressure
+                //q_E = 0.06; // photoionization efficiency
+                //pp_collision_name.get("Num_photons", N_photons);
+                total_collision_prob_photo = q_press*q_E;
+
             }
 
             m_ionization_processes.push_back(std::move(process));
@@ -255,7 +275,6 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
     for (auto const& p : m_three_body_attachment_processes) {
         m_three_body_attachment_processes_exe.push_back(p.executor());
     }
-    amrex::Print() << "J'ai réussi à finir la partie sur gpu" << std::endl;
 #endif
 }
 
@@ -496,7 +515,7 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
         if (ionization_flag) {
             if (photo_ionization_flag) {
                 auto& species3 = mypc->GetParticleContainerFromName(m_photo_species_name);
-                doBackgroundPhotoIonization(lev, cost, species1, species2, species3, cur_time);
+                doBackgroundPhotoIonization(lev, cost, K1, K2, total_collision_prob_photo, species1, species2, species3, cur_time);
             } 
             else {
             doBackgroundIonization(lev, cost, species1, species2, cur_time);
@@ -724,24 +743,12 @@ void BackgroundMCCCollision::doBackgroundIonization
 
 
 void BackgroundMCCCollision::doBackgroundPhotoIonization
-( int lev, amrex::LayoutData<amrex::Real>* cost,
+( int lev, amrex::LayoutData<amrex::Real>* cost, double K1, double K2, double total_collision_prob_photo,
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, WarpXParticleContainer& species3, amrex::Real t)
 {
     WARPX_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
-    // Photoionization process
-    // Constantes pour la photoionisation
-    const double f1 = 2.925e15; // Hz
-    const double f2 = 3.059e15; // Hz
-    const double PO2 = 150.0;   // Torr
-    const double K1 = 3.5 * PO2; // Torr-1 m^-1
-    const double K2 = 200.0 * PO2; // Torr-1 m^-1
-    const double pq = 0.04; // quenching pressure ratio
-    const double p = 750; // pressure in Torr
-    const double q_press = p/(p+pq); // quenching efficiency pressure
-    const double q_E = 0.06; // photoionization efficiency
-    const int N_photons = 100; // number of photons emitted per ionization
+
     // Probability of collision for photoionization
-    double total_collision_prob_photo = q_press*q_E;
     const SmartCopyFactory copy_factory_elec(species1, species1);
     const SmartCopyFactory copy_factory_ion(species1, species2);
     const SmartCopyFactory copy_factory_ion_2(species1, species3);
@@ -789,7 +796,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
                                                         PO2, K1, K2, t
                                                     );
 
-        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<N_photons>(species1, species2, species3,
+        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<10>(species1, species2, species3,
                                                                elec_tile, ion_tile, ion_tile_2, elec_tile, np_elec, np_ion, np_ion_2,
                                                                Filter, Filter2, CopyElec, CopyIon, CopyIon2, Transform, Transform2
                                                                );       

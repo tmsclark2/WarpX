@@ -82,6 +82,9 @@ public:
     void doBackgroundPhotoIonization (
                                  int lev,
                                  amrex::LayoutData<amrex::Real>* cost,
+                                 double K1, 
+                                 double K2, 
+                                 double total_collision_prob_photo,
                                  WarpXParticleContainer& species1,
                                  WarpXParticleContainer& species2,
                                  WarpXParticleContainer& species3,
@@ -141,6 +144,20 @@ private:
     amrex::ParserExecutor<4> m_background_density_func;
     amrex::ParserExecutor<4> m_background_density_func_2;
     amrex::ParserExecutor<4> m_background_temperature_func;
+
+    double f1;
+    double f2; 
+
+    double PO2; 
+    double K1; 
+    double K2; 
+    double pq; 
+    double p; 
+    double q_press; 
+    double q_E; 
+    double total_collision_prob_photo;
+    //int N_photons; 
+
 };
 
 

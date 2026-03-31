@@ -347,9 +347,8 @@ WarpX::WarpX ()
     t_old.resize(nlevs_max, std::numeric_limits<Real>::lowest());
     dt.resize(nlevs_max, std::numeric_limits<Real>::max());
 
-    amrex::Print() << "juste avant" << std::endl;
     mypc = std::make_unique<MultiParticleContainer>(this);
-    amrex::Print() << "juste après" << std::endl;
+
 
     // Loop over species (particles and lasers)
     // and set current injection position per species
