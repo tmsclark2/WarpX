@@ -147,15 +147,15 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
                 pp_collision_name.get("photoionization_species", photoioni_species);
                 m_photo_species_name = photoioni_species;
                 amrex::Vector<double> frequencies_photo;
-                pp_collision_name.queryarr("frequencies_photo", frequencies_photo);
+                pp_collision_name.getarr("frequencies_photo", frequencies_photo);
                 f1 = frequencies_photo[0];
                 f2 = frequencies_photo[1];
                 //const double f1 = 2.925e15; // Hz
                 //const double f2 = 3.059e15; // Hz
-                pp_collision_name.query("O2_P0", PO2);
-                pp_collision_name.query("pq", pq);
-                pp_collision_name.query("p_E", q_E);
-                pp_collision_name.query("O2_pressure", p);
+                pp_collision_name.get("O2_pressure", PO2);
+                pp_collision_name.get("quenching_ratio", pq);
+                pp_collision_name.get("electric_field_ratio", q_E);
+                pp_collision_name.get("total_pressure", p);
 
                 //PO2 = 150.0;   // Torr
                 K1 = 3.5 * PO2; // Torr-1 m^-1
