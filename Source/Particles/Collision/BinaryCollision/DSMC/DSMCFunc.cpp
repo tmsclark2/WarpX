@@ -52,7 +52,7 @@ DSMCFunc::DSMCFunc (
                 pp_collision_name, kw_energy.c_str(), energy);
         }
 
-        ScatteringProcess process(scattering_process, cross_section_file, energy);
+        ScatteringProcess process(scattering_process, cross_section_file, energy, 0.0);
 
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(process.type() != ScatteringProcessType::EXCITATION,
                                         "Excitation collisions are not yet supported in DSMC");

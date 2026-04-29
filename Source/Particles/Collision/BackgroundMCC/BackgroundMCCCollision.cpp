@@ -115,8 +115,10 @@ BackgroundMCCCollision::BackgroundMCCCollision (std::string const& collision_nam
             utils::parser::queryWithParser(
                 pp_collision_name, kw_energy.c_str(), energy);
         }
-
-        ScatteringProcess process(scattering_process, cross_section_file, energy);
+        pp_collision_name.get("Cut_energy_logarithm", logarithm_energy);
+        amrex::Print() << "logarithm_energy" << logarithm_energy << std::endl;
+        amrex::ParticleReal cut_energy = 0.0;
+        ScatteringProcess process(scattering_process, cross_section_file, energy, cut_energy);
 
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(process.type() != ScatteringProcessType::INVALID,
                                          "Cannot add an unknown scattering process type");
@@ -178,6 +180,7 @@ BackgroundMCCCollision::get_nu_max(amrex::Vector<ScatteringProcess> const& mcc_p
     amrex::ParticleReal E_start = 1e-4_prt;
     amrex::ParticleReal E_end = 5000._prt;
     amrex::ParticleReal E_step = 0.2_prt;
+    amrex::ParticleReal E_step_log = 0.2_prt;
 
     // set the energy limits and step size for calculating nu_max based
     // on the given cross-section inputs
@@ -188,16 +191,18 @@ BackgroundMCCCollision::get_nu_max(amrex::Vector<ScatteringProcess> const& mcc_p
         E_end = (energy_hi > E_end) ? energy_hi : E_end;
         auto energy_step = process.getEnergyInputStep();
         E_step = (energy_step < E_step) ? energy_step : E_step;
+        auto energy_step_log = process.getEnergyInputStepLog();
+        E_step_log = (energy_step < E_step) ? energy_step : E_step;
     }
 
     amrex::ParticleReal E = E_start;
     while(E < E_end){
         amrex::ParticleReal sigma_E = 0.0;
-
+        amrex::ParticleReal cut_energy = 0.0;
         // loop through all collision pathways
         for (const auto &scattering_process : mcc_processes) {
             // get collision cross-section
-            sigma_E += scattering_process.getCrossSection(E);
+            sigma_E += scattering_process.getCrossSection(E,  cut_energy);
         }
 
         // calculate collision frequency
@@ -406,7 +411,7 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                                   auto const& scattering_process = *(scattering_processes + i);
 
                                   // get collision cross-section
-                                  sigma_E = scattering_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll));
+                                  sigma_E = scattering_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll), 0.0);
 
                                   // calculate normalized collision frequency
                                   nu_i += n_a * sigma_E * v_coll / nu_max;

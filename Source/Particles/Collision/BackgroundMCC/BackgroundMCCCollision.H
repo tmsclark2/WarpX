@@ -77,6 +77,7 @@ private:
 
     bool init_flag = false;
     bool ionization_flag = false;
+    amrex::ParticleReal logarithm_energy = 10000;
 
     amrex::ParticleReal m_mass1;
 

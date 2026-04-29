@@ -99,7 +99,7 @@ public:
         E_coll = Algorithms::KineticEnergy<double>(ux, uy, uz, m_mass)/eV;
 
         // get collision cross-section
-        const ParticleReal sigma_E = m_mcc_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll));
+        const ParticleReal sigma_E = m_mcc_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll), 0.0);
 
         // calculate normalized collision frequency
         const ParticleReal u_coll2 = ux*ux + uy*uy + uz*uz;
