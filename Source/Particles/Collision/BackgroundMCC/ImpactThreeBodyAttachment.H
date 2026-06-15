@@ -89,8 +89,7 @@ public:
 
         // calculate neutral density at particle location
         const ParticleReal n_a = m_n_a_func(x, y, z, m_t);
-        const ParticleReal n_a_2 = m_n_a_func_2(x, y, z, m_t)*1e-6_prt; // convert from cm^-3 to m^-3
-
+        const ParticleReal n_a_2 = m_n_a_func_2(x, y, z, m_t); //*1e-6_prt; // convert from cm^-3 to m^-3
         // get the particle velocity
         const ParticleReal ux = ptd.m_rdata[PIdx::ux][i];
         const ParticleReal uy = ptd.m_rdata[PIdx::uy][i];
@@ -106,7 +105,7 @@ public:
         // calculate normalized collision frequency
         const ParticleReal u_coll2 = ux*ux + uy*uy + uz*uz;
         const ParticleReal nu_i = n_a_2*n_a * sigma_E * sqrt(u_coll2) / m_nu_max;
-
+    
         // check if this collision should be performed
         return (Random(engine) <= nu_i);
     }

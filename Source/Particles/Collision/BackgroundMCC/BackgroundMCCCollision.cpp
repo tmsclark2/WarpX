@@ -109,7 +109,8 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
         if (scattering_process.find("excitation") != std::string::npos ||
             scattering_process.find("ionization") != std::string::npos||
             scattering_process.find("Attachment") != std::string::npos||
-            scattering_process.find("three_body") != std::string::npos) {
+            scattering_process.find("three_body") != std::string::npos
+        ) {
             const std::string kw_energy = scattering_process + "_energy";
             utils::parser::getWithParser(
                 pp_collision_name, kw_energy.c_str(), energy);
@@ -170,7 +171,8 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
             }
 
             m_ionization_processes.push_back(std::move(process));
-        }  if (process.type() == ScatteringProcessType::ATTACHMENT) {
+        }  
+        else if (process.type() == ScatteringProcessType::ATTACHMENT) {
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!attachment_flag,
                                              "Background MCC only supports a single attachment process");
             attachment_flag = true;
@@ -183,7 +185,7 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
 
             m_attachment_processes.push_back(std::move(process));
         }
-         if (process.type() == ScatteringProcessType::THREE_BODY) {
+        else if (process.type() == ScatteringProcessType::THREE_BODY) {
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!three_body_attachment_flag,
                                              "Background MCC only supports a single three-body attachment process");
             three_body_attachment_flag = true;
@@ -426,8 +428,7 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
             // is taken as the background mass
             m_background_mass = species2.getMass();
         }
-
-        if (attachment_flag) {
+        else if (attachment_flag) {
             // calculate maximum collision frequency for attachment
             m_nu_max_attach = get_nu_max(m_attachment_processes);
 
@@ -443,7 +444,7 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
             }
         }
 
-        if (three_body_attachment_flag) {
+        else if (three_body_attachment_flag) {
             // calculate maximum collision frequency for ionization
             m_nu_max_threebody = get_nu_max_threebody(m_three_body_attachment_processes);
 
@@ -519,13 +520,13 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
             } 
             else {
             doBackgroundIonization(lev, cost, species1, species2, cur_time);
-        }
-        if (attachment_flag) {
+        };
+    }
+    else if (attachment_flag) {
             doBackgroundAttachment(lev, cost, species1, species2, cur_time);
-        }
-        if (three_body_attachment_flag) {
+    }
+    else if (three_body_attachment_flag) {
             doBackgroundThreeBodyAttachment(lev, cost, species1, species2, cur_time);
-        }
         }
     }
 }
@@ -612,7 +613,6 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                               // loop through all collision pathways
                               for (int i = 0; i < process_count; i++) {
                                   auto const& scattering_process = *(scattering_processes + i);
-
                                   // get collision cross-section
                                   sigma_E = scattering_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll));
 
@@ -796,7 +796,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
                                                         PO2, K1, K2, t
                                                     );
 
-        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<10>(species1, species2, species3,
+        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<1>(species1, species2, species3,
                                                                elec_tile, ion_tile, ion_tile_2, elec_tile, np_elec, np_ion, np_ion_2,
                                                                Filter, Filter2, CopyElec, CopyIon, CopyIon2, Transform, Transform2
                                                                );       
@@ -900,7 +900,7 @@ void BackgroundMCCCollision::doBackgroundThreeBodyAttachment
         const auto np_ion = ion_tile.numParticles();
 
         auto Transform = ImpactThreeBodyAttachmentTransformFunc(
-                                                       m_attachment_processes[0].getEnergyPenalty(),
+                                                       m_three_body_attachment_processes[0].getEnergyPenalty(),
                                                        m_mass1, sqrt_kb_m, m_background_temperature_func, t
                                                        );
 
