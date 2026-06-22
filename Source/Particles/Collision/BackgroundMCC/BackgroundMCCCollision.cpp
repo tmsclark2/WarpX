@@ -796,7 +796,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
                                                         PO2, K1, K2, t
                                                     );
 
-        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<1>(species1, species2, species3,
+        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<100>(species1, species2, species3,
                                                                elec_tile, ion_tile, ion_tile_2, elec_tile, np_elec, np_ion, np_ion_2,
                                                                Filter, Filter2, CopyElec, CopyIon, CopyIon2, Transform, Transform2
                                                                );       

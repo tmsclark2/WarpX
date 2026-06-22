@@ -134,7 +134,7 @@ public:
     {
         using namespace amrex;
         using std::sqrt;
-
+        int Nphoton = 100;
         // get references to the particle to get its position
         const auto& p = src.getSuperParticle(i_src);
         ParticleReal x, y, z;
@@ -186,8 +186,8 @@ public:
         e_ux = .0_prt;
         e_uz = .0_prt;
 
-        e_w = w_src/Np; // assign weight to new electron
-        i_w = w_src/Np; // assign weight to new ion
+        e_w = w_src/Nphoton; // assign weight to new electron
+        i_w = w_src/Nphoton; // assign weight to new ion
 
 #ifdef WARPX_DIM_XYZ
         const double dy = d * std::sin(theta) * std::sin(phi);
