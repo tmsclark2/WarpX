@@ -125,7 +125,7 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
                     copy3(dst3_data, src_data, i, N*p_offsets2[i] + dst3_index + j, engine);             
                     transform2(dst1_data, dst3_data, src_data, i,
                       num_added+N*p_offsets2[i] + dst1_index + j,
-                      N*p_offsets2[i] + dst3_index + j, N,
+                      N*p_offsets2[i] + dst3_index + j,
                       engine);   
                     }
         }

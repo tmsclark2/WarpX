@@ -152,7 +152,7 @@ private:
     double K1; 
     double K2; 
     double pq; 
-    double p; 
+    double tot_press; 
     double q_press; 
     double q_E; 
     double total_collision_prob_photo;
