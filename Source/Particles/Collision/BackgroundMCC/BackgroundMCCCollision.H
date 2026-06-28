@@ -145,6 +145,7 @@ private:
     amrex::ParserExecutor<4> m_background_density_func_2;
     amrex::ParserExecutor<4> m_background_temperature_func;
 
+    int Nphotons;
     double f1;
     double f2; 
 

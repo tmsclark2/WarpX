@@ -363,7 +363,7 @@ BackgroundMCCCollision::get_nu_max_threebody(amrex::Vector<ScatteringProcess> co
 
         // calculate collision frequency
         nu = (
-              m_max_background_density*m_max_background_density_2*1e-6_prt
+              m_max_background_density*m_max_background_density_2
               * std::sqrt(2.0_prt / m_mass1 * PhysConst::q_e)
               * sigma_E * std::sqrt(E)
               );
@@ -454,8 +454,8 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
 
             if (coll_n_threebody > 0.1_prt) {
                 ablastr::warn_manager::WMRecordWarning("BackgroundMCC Collisions",
-                         "dt is too large to ensure accurate MCC attachment , coll_n_attachment: " +
-                          std::to_string(coll_n_threebody) + " is > 0.1 and attachment probability is = " +
+                         "dt is too large to ensure accurate MCC three body attachment , coll_n_attachment: " +
+                          std::to_string(coll_n_threebody) + " is > 0.1 and three body attachment probability is = " +
                           std::to_string(m_total_collision_prob_threebody) + "\n");
             }
 
@@ -476,6 +476,8 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
             + std::to_string(m_total_collision_prob)
             + "\n     total ionization collision probability: "
             + std::to_string(m_total_collision_prob_ioniz)
+            + "\n     total attachment collision probability: "
+            + std::to_string(m_total_collision_prob_attach)
             + "\n     total three-body attachment collision probability: "
             + std::to_string(m_total_collision_prob_threebody)
         );
@@ -743,7 +745,7 @@ void BackgroundMCCCollision::doBackgroundIonization
 
 
 void BackgroundMCCCollision::doBackgroundPhotoIonization
-( int lev, amrex::LayoutData<amrex::Real>* cost, double K1, double K2, double total_collision_prob_photo,
+( int lev, amrex::LayoutData<amrex::Real>* cost, double K1_, double K2_, double total_collision_prob_photo_,
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, WarpXParticleContainer& species3, amrex::Real t)
 {
     WARPX_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
@@ -764,7 +766,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
                                                    );
 
     const auto Filter2 = ImpactPhotoIonizationFilterFunc(
-                                                   total_collision_prob_photo, t
+                                                   total_collision_prob_photo_, t
                                                    );
     const amrex::ParticleReal sqrt_kb_m = std::sqrt(PhysConst::kb / m_background_mass);
 
@@ -786,17 +788,17 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
         const auto np_elec = elec_tile.numParticles();
         const auto np_ion = ion_tile.numParticles();
         const auto np_ion_2 = ion_tile_2.numParticles();
-
+        Nphotons = 10;
         auto Transform = ImpactIonizationTransformFunc(
                                                        m_ionization_processes[0].getEnergyPenalty(),
                                                        m_mass1, sqrt_kb_m, m_background_temperature_func, t
                                                        );
         auto Transform2 = ImpactPhotoIonizationTransformFunc(
                                                         f1, f2,
-                                                        PO2, K1, K2, t
+                                                        PO2, K1_, K2_, Nphotons, t
                                                     );
 
-        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<100>(species1, species2, species3,
+        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<10>(species1, species2, species3,
                                                                elec_tile, ion_tile, ion_tile_2, elec_tile, np_elec, np_ion, np_ion_2,
                                                                Filter, Filter2, CopyElec, CopyIon, CopyIon2, Transform, Transform2
                                                                );       

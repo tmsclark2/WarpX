@@ -108,9 +108,9 @@ public:
     */
     ImpactPhotoIonizationTransformFunc(
         double f1, double f2, double PO2,
-        double K1, double K2, amrex::Real t
+        double K1, double K2, int Nphotons, amrex::Real t
     ) :  m_f1(f1), m_f2(f2),
-         m_PO2(PO2), m_K1(K1), m_K2(K2),m_t(t) { }
+         m_PO2(PO2), m_K1(K1), m_K2(K2), m_Nphotons(Nphotons), m_t(t) { }
 
     /**
     * \brief Functor call. It determines the properties of the generated pair
@@ -134,7 +134,6 @@ public:
     {
         using namespace amrex;
         using std::sqrt;
-        int Nphoton = 100;
         // get references to the particle to get its position
         const auto& p = src.getSuperParticle(i_src);
         ParticleReal x, y, z;
@@ -145,18 +144,18 @@ public:
         const amrex::Real Rg2 = Random(engine);
         const amrex::Real Rg3 = Random(engine);
         // Fréquence du photon
-        const double f = m_f1 + 2.0 * Rg2 * (m_f2 - m_f1);
+        const double f = m_f1 + Rg2 * (m_f2 - m_f1);
         // Mean free path 
-        const double Lambda_gamma = m_K1*std::pow(m_K1 / m_K2,(f - m_f1)/(m_f2 - m_f1));
+        const double Lambda_gamma = m_K1*std::pow(m_K2 / m_K1,(f - m_f1)/(m_f2 - m_f1));
 
         // Distance parcourue par le photon
         const double d = -pow(Lambda_gamma,-1) * std::log(Rg3);
 
         // Tirage aléatoire angles theta/phi
-        const double theta = RandomNormal(0_prt, 1.0_prt, engine) * M_PI;
-        const double phi   = RandomNormal(0_prt, 1.0_prt, engine) * 2.0 * M_PI;
-        const double dx = d * std::sin(theta) * std::cos(phi);
-        const double dz = d * std::cos(theta);
+        const double theta = Random(engine) * 2.0*M_PI;
+        const double phi   = std::acos(2.0 * Random(engine) - 1.0);
+        const double dx = d * std::sin(phi) * std::cos(theta);
+        const double dz = d * std::cos(phi);
         // get references to the original particle weight
         const ParticleReal w_src = src.m_rdata[PIdx::w][i_src];
 
@@ -185,9 +184,8 @@ public:
         e_uy = .0_prt;
         e_ux = .0_prt;
         e_uz = .0_prt;
-
-        e_w = w_src/Nphoton; // assign weight to new electron
-        i_w = w_src/Nphoton; // assign weight to new ion
+        e_w = w_src/m_Nphotons; // assign weight to new electron
+        i_w = w_src/m_Nphotons; // assign weight to new ion
 
 #ifdef WARPX_DIM_XYZ
         const double dy = d * std::sin(theta) * std::sin(phi);
@@ -206,6 +204,7 @@ private:
     double m_PO2;
     double m_K1;
     double m_K2;
+    int m_Nphotons;
     amrex::Real m_t;
 };
 #endif // WARPX_PARTICLES_COLLISION_IMPACT_PHOTO_IONIZATION_H_
