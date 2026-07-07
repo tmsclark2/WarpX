@@ -62,11 +62,8 @@ public:
         // determine if this particle should collide
         if (!mask) return false;
         // check if this collision should be performed
-         amrex::Real prob = Random(engine);
-        //amrex::Print() << "La proba est de " << prob << std::endl;
-        //amrex::Print() << "La PHOTO proba est de " << m_total_collision_prob_photo << std::endl;
-
-        return (prob < m_total_collision_prob_photo); 
+ 
+        return (Random(engine) < m_total_collision_prob_photo); 
     }
 
 private:

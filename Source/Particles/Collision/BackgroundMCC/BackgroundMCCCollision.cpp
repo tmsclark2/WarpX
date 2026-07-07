@@ -729,7 +729,6 @@ void BackgroundMCCCollision::doBackgroundIonization
                                                                elec_tile, ion_tile, elec_tile, np_elec, np_ion,
                                                                Filter, CopyElec, CopyIon, Transform
                                                                );
-        amrex::Print() << "num_added" << num_added << std::endl;
 
         setNewParticleIDs(elec_tile, np_elec, num_added);
         setNewParticleIDs(ion_tile, np_ion, num_added);
@@ -750,7 +749,6 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, WarpXParticleContainer& species3, amrex::Real t)
 {
     WARPX_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
-    amrex::Print() << "Proba photo" << total_collision_prob_photo_ << std::endl;
     // Probability of collision for photoionization
     const SmartCopyFactory copy_factory_elec(species1, species1);
     const SmartCopyFactory copy_factory_ion(species1, species2);
