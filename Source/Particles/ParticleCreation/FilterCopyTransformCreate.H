@@ -60,7 +60,7 @@
 template <int N, typename DstPC, typename DstTile, typename SrcTile, typename Index,
           typename TransFunc, typename TransFunc2, typename CopyFunc1, typename CopyFunc2, typename CopyFunc3,
           amrex::EnableIf_t<std::is_integral_v<Index>, int> foo = 0>
-std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& pc2, DstPC& pc3, DstTile& dst1, DstTile& dst2, DstTile& dst3, SrcTile& src, Index* mask, Index* mask2,
+std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& pc2, DstPC& pc3, DstTile& dst1, DstTile& dst2, DstTile& dst3, SrcTile& src, Index* mask, int* mask2,
                                     Index dst1_index, Index dst2_index, Index dst3_index,
                                     CopyFunc1&& copy1, CopyFunc2&& copy2, CopyFunc3&& copy3,
                                     TransFunc&& transform, TransFunc2&& transform2) noexcept
@@ -71,13 +71,14 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
     auto np = src.numParticles();
     if (np == 0) { return {0,0}; }
     Gpu::DeviceVector<Index> offsets(np);
-    Gpu::DeviceVector<Index> offsets2(np);
+    Gpu::DeviceVector<int> offsets2(np);
 
     auto total = amrex::Scan::ExclusiveSum(np, mask, offsets.data());
-    auto total2 = amrex::Scan::ExclusiveSum(np, mask2, offsets2.data());
+    //auto total2 = amrex::Scan::ExclusiveSum(np, mask2, offsets2.data());
+    auto Numbphotons = amrex::Scan::ExclusiveSum(np, mask2, offsets2.data());
 
     const Index num_added = total;
-    const Index num_added2 = N * total2;
+    const Index num_added2 = Numbphotons;
 
     auto old_np1 = dst1.size();
 
@@ -116,19 +117,17 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
                       p_offsets[i] + dst1_index,
                       p_offsets[i] + dst2_index,
                       engine);
-            if (mask2[i])
-            {
-                for (int j = 0; j < N; ++j)
+        //amrex::Print() << " mask2[i]" << mask2[i] << std::endl;
+                for (int j = 0; j < mask2[i]; ++j)
                 {      
                     // electron correspond à la première espèce ici
-                    copy1(dst1_data, src_data, i, num_added+N*p_offsets2[i] + dst1_index + j, engine);
-                    copy3(dst3_data, src_data, i, N*p_offsets2[i] + dst3_index + j, engine);             
+                    copy1(dst1_data, src_data, i, num_added+p_offsets2[i] + dst1_index + j, engine);
+                    copy3(dst3_data, src_data, i, p_offsets2[i] + dst3_index + j, engine);             
                     transform2(dst1_data, dst3_data, src_data, i,
-                      num_added+N*p_offsets2[i] + dst1_index + j,
-                      N*p_offsets2[i] + dst3_index + j,
+                      num_added+p_offsets2[i] + dst1_index + j,
+                      p_offsets2[i] + dst3_index + j, mask2[i],
                       engine);   
                     }
-        }
     }
     });
 
@@ -238,20 +237,39 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
 
     Gpu::DeviceVector<Index> mask(np);
     Gpu::DeviceVector<Index> mask2(np);
+    Gpu::DeviceVector<int> nphotons(np);
 
     auto *p_mask = mask.dataPtr();
     auto *p_mask2 = mask2.dataPtr();
+    auto *p_nphotons = nphotons.dataPtr();
 
     const auto src_data = src.getParticleTileData();
 
     amrex::ParallelForRNG(np,
     [=] AMREX_GPU_DEVICE (int i, amrex::RandomEngine const& engine)
     {
+        amrex::Real Numberphotons;
         p_mask[i] = filter(src_data, i, engine);
         p_mask2[i] = filter2(p_mask[i], engine);
+        if (p_mask2[i]){
+            src_data.getSuperParticle(i);
+            const ParticleReal w_src = src_data.m_rdata[PIdx::w][i];
+            Numberphotons= w_src; //-static_cast<int>(std::floor(w_src));
+            if ((Numberphotons>=1000)){
+                Numberphotons=1000;
+            }
+            if(Numberphotons<=0){
+                Numberphotons=0;
+            }
+            p_nphotons[i]=Numberphotons;
+
+    }
+    else{
+       p_nphotons[i]=0;
+    }
     });
 
-    return filterCopyTransformCreateParticles<N>(pc1, pc2, pc3, dst1, dst2, dst3, src, mask.dataPtr(), mask2.dataPtr(),
+    return filterCopyTransformCreateParticles<N>(pc1, pc2, pc3, dst1, dst2, dst3, src, mask.dataPtr(), nphotons.dataPtr(),
                                         dst1_index, dst2_index, dst3_index,
                                         std::forward<CopyFunc1>(copy1),
                                         std::forward<CopyFunc2>(copy2),

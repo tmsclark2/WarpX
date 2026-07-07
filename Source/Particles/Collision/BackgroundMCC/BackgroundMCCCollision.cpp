@@ -365,7 +365,7 @@ BackgroundMCCCollision::get_nu_max_threebody(amrex::Vector<ScatteringProcess> co
         nu = (
               m_max_background_density*m_max_background_density_2
               * std::sqrt(2.0_prt / m_mass1 * PhysConst::q_e)
-              * sigma_E * std::sqrt(E)
+              * sigma_E * std::sqrt(E)*1e-6
               );
         if (nu > nu_max) {
             nu_max = nu;
@@ -729,6 +729,7 @@ void BackgroundMCCCollision::doBackgroundIonization
                                                                elec_tile, ion_tile, elec_tile, np_elec, np_ion,
                                                                Filter, CopyElec, CopyIon, Transform
                                                                );
+        amrex::Print() << "num_added" << num_added << std::endl;
 
         setNewParticleIDs(elec_tile, np_elec, num_added);
         setNewParticleIDs(ion_tile, np_ion, num_added);
@@ -749,7 +750,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, WarpXParticleContainer& species3, amrex::Real t)
 {
     WARPX_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
-
+    amrex::Print() << "Proba photo" << total_collision_prob_photo_ << std::endl;
     // Probability of collision for photoionization
     const SmartCopyFactory copy_factory_elec(species1, species1);
     const SmartCopyFactory copy_factory_ion(species1, species2);
@@ -795,14 +796,13 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
                                                        );
         auto Transform2 = ImpactPhotoIonizationTransformFunc(
                                                         f1, f2,
-                                                        PO2, K1_, K2_, Nphotons, t
+                                                        PO2, K1_, K2_, t
                                                     );
 
-        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<10>(species1, species2, species3,
+        const auto [num_added, num_added2] = filterCopyTransformCreateParticles<1>(species1, species2, species3,
                                                                elec_tile, ion_tile, ion_tile_2, elec_tile, np_elec, np_ion, np_ion_2,
                                                                Filter, Filter2, CopyElec, CopyIon, CopyIon2, Transform, Transform2
                                                                );       
-
         setNewParticleIDs(elec_tile, np_elec, num_added+num_added2);
         setNewParticleIDs(ion_tile, np_ion, num_added);
         setNewParticleIDs(ion_tile_2, np_ion_2, num_added2);

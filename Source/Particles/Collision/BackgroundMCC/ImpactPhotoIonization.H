@@ -62,7 +62,11 @@ public:
         // determine if this particle should collide
         if (!mask) return false;
         // check if this collision should be performed
-        return (Random(engine) < m_total_collision_prob_photo); 
+         amrex::Real prob = Random(engine);
+        //amrex::Print() << "La proba est de " << prob << std::endl;
+        //amrex::Print() << "La PHOTO proba est de " << m_total_collision_prob_photo << std::endl;
+
+        return (prob < m_total_collision_prob_photo); 
     }
 
 private:
@@ -108,9 +112,9 @@ public:
     */
     ImpactPhotoIonizationTransformFunc(
         double f1, double f2, double PO2,
-        double K1, double K2, int Nphotons, amrex::Real t
+        double K1, double K2, amrex::Real t
     ) :  m_f1(f1), m_f2(f2),
-         m_PO2(PO2), m_K1(K1), m_K2(K2), m_Nphotons(Nphotons), m_t(t) { }
+         m_PO2(PO2), m_K1(K1), m_K2(K2), m_t(t) { }
 
     /**
     * \brief Functor call. It determines the properties of the generated pair
@@ -129,7 +133,7 @@ public:
     template <typename DstData, typename SrcData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     void operator() (DstData& dst1, DstData& dst2, SrcData& src,
-        int const i_src, int const i_dst1, int const i_dst2,
+        int const i_src, int const i_dst1, int const i_dst2, int Nphotons,
         amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex;
@@ -184,8 +188,8 @@ public:
         e_uy = .0_prt;
         e_ux = .0_prt;
         e_uz = .0_prt;
-        e_w = w_src/m_Nphotons; // assign weight to new electron
-        i_w = w_src/m_Nphotons; // assign weight to new ion
+        e_w = w_src/Nphotons; // assign weight to new electron
+        i_w = w_src/Nphotons; // assign weight to new ion
 
 #ifdef WARPX_DIM_XYZ
         const double dy = d * std::sin(theta) * std::sin(phi);

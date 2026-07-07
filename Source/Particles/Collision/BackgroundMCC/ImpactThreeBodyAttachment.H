@@ -104,7 +104,7 @@ public:
 
         // calculate normalized collision frequency
         const ParticleReal u_coll2 = ux*ux + uy*uy + uz*uz;
-        const ParticleReal nu_i = n_a_2*n_a * sigma_E * sqrt(u_coll2) / m_nu_max;
+        const ParticleReal nu_i = n_a_2*n_a*1e-6 * sigma_E * sqrt(u_coll2) / m_nu_max;
     
         // check if this collision should be performed
         return (Random(engine) <= nu_i);
