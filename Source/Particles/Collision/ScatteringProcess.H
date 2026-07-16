@@ -20,6 +20,7 @@
 enum class ScatteringProcessType {
     INVALID,
     ELASTIC,
+    RUTHERFORD,
     BACK,
     TWOPRODUCT_REACTION,
     CHARGE_EXCHANGE,
@@ -34,7 +35,8 @@ public:
     ScatteringProcess (
                 const std::string& scattering_process,
                 const std::string& cross_section_file,
-                amrex::ParticleReal energy
+                const amrex::ParticleReal energy,
+                const std::string& cross_section_file_momentum = ""
                 );
 
     template <typename InputVector>
@@ -42,7 +44,8 @@ public:
                 const std::string& scattering_process,
                 const InputVector&& energies,
                 const InputVector&& sigmas,
-                amrex::ParticleReal energy
+                const amrex::ParticleReal energy,
+                const InputVector&& sigmas_mt = InputVector()
                 );
 
     ~ScatteringProcess() = default;
@@ -51,7 +54,6 @@ public:
     ScatteringProcess& operator= (ScatteringProcess const&) = delete;
     ScatteringProcess (ScatteringProcess &&)                = default;
     ScatteringProcess& operator= (ScatteringProcess &&)     = default;
-
     /** Read the given cross-section data file to memory.
      *
      * @param cross_section_file the path to the file containing the cross-
@@ -64,7 +66,9 @@ public:
     void readCrossSectionFile (
                                const std::string& cross_section_file,
                                amrex::Vector<amrex::ParticleReal>& energies,
-                               amrex::Gpu::HostVector<amrex::ParticleReal>& sigmas
+                               amrex::Gpu::HostVector<amrex::ParticleReal>& sigmas,
+                               const std::string& cross_section_file_momentum,
+                               amrex::Gpu::HostVector<amrex::ParticleReal>& sigmas_mt
                                );
 
     static
@@ -102,14 +106,58 @@ public:
                 return m_sigmas_data[idx_1] + (m_sigmas_data[idx_2] - m_sigmas_data[idx_1]) * temp;
             }
         }
+        [[nodiscard]]
+        AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+        amrex::ParticleReal getCrossSection_momentum (amrex::ParticleReal E_coll) const
+        {
+            if (E_coll < m_energy_lo) {
+                return m_sigma_mt_hi;
+            } else if (E_coll > m_energy_hi) {
+                return m_sigma_mt_lo;
+            } else {
+                using amrex::Math::floor;
+                using amrex::Math::ceil;
+                // calculate index of bounding energy pairs
+                amrex::ParticleReal temp = (E_coll - m_energy_lo) / m_dE;
+                const int idx_1 = static_cast<int>(floor(temp));
+                const int idx_2 = static_cast<int>(ceil(temp));
+
+                // linearly interpolate to the given energy value
+                temp -= idx_1;
+                return m_sigmas_mt_data[idx_1] + (m_sigmas_mt_data[idx_2] - m_sigmas_mt_data[idx_1]) * temp;
+            }
+        }
+        [[nodiscard]]
+        AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+        amrex::ParticleReal getEta (amrex::ParticleReal E_coll) const
+        {
+            if (E_coll < m_energy_lo) {
+                return std::exp(m_log_etan_lo);
+            } else if (E_coll > m_energy_hi) {
+                return std::exp(m_log_etan_hi);
+            } else {
+                using amrex::Math::floor;
+                using amrex::Math::ceil;
+                // calculate index of bounding energy pairs
+                amrex::ParticleReal temp = (E_coll - m_energy_lo) / m_dE;
+                const int idx_1 = static_cast<int>(floor(temp));
+                const int idx_2 = static_cast<int>(ceil(temp));
+
+                // linearly interpolate to the given energy value
+                temp -= idx_1;
+                return std::exp(m_log_etan[idx_1])*std::exp(std::log(std::exp(m_log_etan[idx_2])/std::exp(m_log_etan[idx_1]))/std::log(m_energies_data[idx_2]/m_energies_data[idx_1])*std::log(E_coll/m_energies_data[idx_1]));
+            }
+        }
+
 
         amrex::ParticleReal* m_sigmas_data = nullptr;
-        amrex::ParticleReal m_energy_lo, m_energy_hi, m_sigma_lo, m_sigma_hi, m_dE;
+        amrex::ParticleReal* m_sigmas_mt_data = nullptr;
+        amrex::ParticleReal* m_energies_data = nullptr;
+        amrex::ParticleReal* m_log_etan = nullptr;  
+
+        amrex::ParticleReal m_energy_lo, m_Rn, m_energy_hi, m_sigma_lo, m_sigma_hi, m_sigma_mt_lo, m_sigma_mt_hi, m_dE, m_log_etan_lo, m_log_etan_hi;
         amrex::ParticleReal m_energy_penalty;
         ScatteringProcessType m_type;
-        /** True if this process creates new product particles (ionization, charge exchange,
-         *  two-product reaction); false for purely scattering processes (elastic, excitation). **/
-        bool m_produces_products = false;
     };
 
     [[nodiscard]]
@@ -141,12 +189,20 @@ private:
     void init (const std::string& scattering_process, amrex::ParticleReal energy);
 
     amrex::Vector<amrex::ParticleReal> m_energies;
+    amrex::Gpu::HostVector<amrex::ParticleReal> m_log_etan_h;  
 
 #ifdef AMREX_USE_GPU
     amrex::Gpu::DeviceVector<amrex::ParticleReal> m_sigmas_d;
+    amrex::Gpu::DeviceVector<amrex::ParticleReal> m_sigmas_mt_d;
+    amrex::Gpu::DeviceVector<amrex::ParticleReal> m_energies_d;
+    amrex::Gpu::DeviceVector<amrex::ParticleReal> m_log_etan_d;  
+
     Executor m_exe_d;
 #endif
     amrex::Gpu::HostVector<amrex::ParticleReal> m_sigmas_h;
+    amrex::Gpu::HostVector<amrex::ParticleReal> m_sigmas_mt_h;
+    amrex::Gpu::HostVector<amrex::ParticleReal> m_energies_h;
+
     Executor m_exe_h;
 
     int m_grid_size;

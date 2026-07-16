@@ -8,6 +8,7 @@
 
 #include "VelocityCoincidenceThinning.H"
 #include "LevelingThinning.H"
+#include "RussianRoulette.H"
 #include "Utils/TextMsg.H"
 
 #include <AMReX.H>
@@ -22,6 +23,10 @@ Resampling::Resampling (const std::string& species_name)
     if (resampling_algorithm_string == "leveling_thinning")
     {
         m_resampling_algorithm = std::make_unique<LevelingThinning>(species_name);
+    }
+    else if (resampling_algorithm_string == "Russian_roulette")
+    {
+        m_resampling_algorithm = std::make_unique<RussianRoulette>(species_name);
     }
     else if (resampling_algorithm_string == "velocity_coincidence_thinning")
     {

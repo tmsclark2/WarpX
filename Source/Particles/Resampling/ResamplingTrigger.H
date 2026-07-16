@@ -61,7 +61,8 @@ private:
 
     //Total number of simulated cells, summed over all mesh refinement levels.
     mutable amrex::Real m_global_numcells = amrex::Real(0.0);
-
+    amrex::Real m_max_numparts_specified;
+    amrex::Real m_max_total_numparts;
     mutable bool m_initialized = false;
 };
 

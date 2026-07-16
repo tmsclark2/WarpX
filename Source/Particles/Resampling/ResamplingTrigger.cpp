@@ -25,6 +25,16 @@ ResamplingTrigger::ResamplingTrigger (const std::string& species_name)
 
     utils::parser::queryWithParser(
         pp_species_name, "resampling_trigger_max_avg_ppc", m_max_avg_ppc);
+
+    // L'option n'est active que si l'utilisateur a fourni le paramètre
+    m_max_numparts_specified = utils::parser::queryWithParser(
+        pp_species_name, "resampling_trigger_max_numparts", m_max_total_numparts);
+
+    if (m_max_numparts_specified) {
+        amrex::Print() << "Resampling trigger on total number of particles enabled for species '"
+                       << species_name << "' (threshold = "
+                       << m_max_total_numparts << ")\n";
+    }
 }
 
 bool ResamplingTrigger::triggered (const int timestep, const amrex::Real global_numparts) const
@@ -32,8 +42,10 @@ bool ResamplingTrigger::triggered (const int timestep, const amrex::Real global_
     if (!m_initialized) {initialize_global_numcells();};
 
     const amrex::Real avg_ppc = global_numparts/m_global_numcells;
+
     return (m_resampling_intervals.contains(timestep) ||
-            avg_ppc > m_max_avg_ppc);
+            avg_ppc > m_max_avg_ppc ||
+            (m_max_numparts_specified && global_numparts > m_max_total_numparts));
 }
 
 void ResamplingTrigger::initialize_global_numcells () const

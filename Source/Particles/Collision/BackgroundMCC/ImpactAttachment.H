@@ -4,8 +4,8 @@
  *
  * License: BSD-3-Clause-LBNL
  */
-#ifndef WARPX_PARTICLES_COLLISION_IMPACT_IONIZATION_H_
-#define WARPX_PARTICLES_COLLISION_IMPACT_IONIZATION_H_
+#ifndef WARPX_PARTICLES_COLLISION_IMPACT_ATTACHMENT_H_
+#define WARPX_PARTICLES_COLLISION_IMPACT_ATTACHMENT_H_
 
 #include "Particles/Collision/ScatteringProcess.H"
 
@@ -24,7 +24,7 @@
 /**
  * \brief Filter functor for impact ionization
  */
-class ImpactIonizationFilterFunc
+class ImpactAttachmentFilterFunc
 {
 public:
 
@@ -48,7 +48,7 @@ public:
                  density in m^-3 as a function of space and time
     * @param[in] t the current simulation time
     */
-    ImpactIonizationFilterFunc(
+    ImpactAttachmentFilterFunc(
         ScatteringProcess const& mcc_process,
         double const mass,
         amrex::ParticleReal const total_collision_prob,
@@ -122,7 +122,7 @@ private:
 /**
  * \brief Transform functor for impact ionization
  */
-class ImpactIonizationTransformFunc
+class ImpactAttachmentTransformFunc
 {
 public:
 
@@ -147,7 +147,7 @@ public:
                  temperature in Kelvin as a function of space and time
     * @param[in] t the current simulation time
     */
-    ImpactIonizationTransformFunc(
+    ImpactAttachmentTransformFunc(
         amrex::ParticleReal energy_cost, double mass1, amrex::ParticleReal sqrt_kb_m,
         amrex::ParserExecutor<4> const& T_a_func, amrex::Real t
     ) :  m_energy_cost(energy_cost), m_mass1(mass1),
@@ -169,8 +169,8 @@ public:
     */
     template <typename DstData, typename SrcData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
-    void operator() (DstData& dst1, DstData& dst2, SrcData& src,
-        int const i_src, int const i_dst1, int const i_dst2,
+    void operator() (DstData& dst1 , SrcData& src,
+        int const i_src, int const i_dst1,
         amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex;
@@ -186,41 +186,39 @@ public:
         // the local temperature
         const ParticleReal ion_vel_std = m_sqrt_kb_m * std::sqrt(m_T_a_func(x, y, z, m_t));
 
-        // get references to the original particle's velocity
-        auto& ux = src.m_rdata[PIdx::ux][i_src];
-        auto& uy = src.m_rdata[PIdx::uy][i_src];
-        auto& uz = src.m_rdata[PIdx::uz][i_src];
-
         // get references to the new particles' velocities
-        auto& e_ux = dst1.m_rdata[PIdx::ux][i_dst1];
-        auto& e_uy = dst1.m_rdata[PIdx::uy][i_dst1];
-        auto& e_uz = dst1.m_rdata[PIdx::uz][i_dst1];
-        auto& i_ux = dst2.m_rdata[PIdx::ux][i_dst2];
-        auto& i_uy = dst2.m_rdata[PIdx::uy][i_dst2];
-        auto& i_uz = dst2.m_rdata[PIdx::uz][i_dst2];
+        auto& i_ux = dst1.m_rdata[PIdx::ux][i_dst1];
+        auto& i_uy = dst1.m_rdata[PIdx::uy][i_dst1];
+        auto& i_uz = dst1.m_rdata[PIdx::uz][i_dst1];
 
-        // calculate kinetic energy
-        constexpr auto eV = PhysConst::q_e;
-        E_coll = Algorithms::KineticEnergy<double>(ux, uy, uz, m_mass1)/eV;
-
-        // each electron gets half the energy (could change this later)
-        const auto E_out = static_cast<amrex::ParticleReal>((E_coll - m_energy_cost) / 2.0_prt * eV);
-
-        // precalculate often used value
-        constexpr auto c2 = PhysConst::c * PhysConst::c;
-        const auto mc2 = m_mass1*c2;
-
-        const amrex::ParticleReal up = sqrt(E_out * (E_out + 2.0_prt*mc2) / c2) / m_mass1;
-
-        // isotropically scatter electrons
-        ParticleUtils::RandomizeVelocity(ux, uy, uz, up, engine);
-        ParticleUtils::RandomizeVelocity(e_ux, e_uy, e_uz, up, engine);
-
-        // get velocities for the ion from a Maxwellian distribution
+        // set velocities for the ion from a Maxwellian distribution
         i_ux = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
         i_uy = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
         i_uz = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
+        
+        //remove the electron which did the attachment
+        uint64_t* AMREX_RESTRICT idcpu1 = src.m_idcpu;
+        remove_colliding_particle(idcpu1[i_src]);
     }
+
+/**
+ * \brief Subtract given weight from particle and set its ID to invalid
+ * if the weight reaches zero.
+ */
+    AMREX_GPU_HOST_DEVICE AMREX_INLINE
+    void remove_colliding_particle (
+        uint64_t& idcpu) const noexcept
+    {
+#if defined(AMREX_USE_OMP)
+#pragma omp atomic write
+            idcpu = amrex::ParticleIdCpus::Invalid;
+#else
+            amrex::Gpu::Atomic::Exch(
+                (unsigned long long *)&idcpu,
+                (unsigned long long)amrex::ParticleIdCpus::Invalid
+            );
+#endif
+        }
 
 private:
     amrex::ParticleReal m_energy_cost;

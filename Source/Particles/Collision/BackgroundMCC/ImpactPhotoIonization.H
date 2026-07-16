@@ -4,8 +4,8 @@
  *
  * License: BSD-3-Clause-LBNL
  */
-#ifndef WARPX_PARTICLES_COLLISION_IMPACT_IONIZATION_H_
-#define WARPX_PARTICLES_COLLISION_IMPACT_IONIZATION_H_
+#ifndef WARPX_PARTICLES_COLLISION_IMPACT_PHOTO_IONIZATION_H_
+#define WARPX_PARTICLES_COLLISION_IMPACT_PHOTO_IONIZATION_H_
 
 #include "Particles/Collision/ScatteringProcess.H"
 
@@ -16,15 +16,7 @@
 #include <AMReX_Random.H>
 #include <AMReX_REAL.H>
 
-/** @file
- *
- * This file contains filter and transform functors for impact ionization
- */
-
-/**
- * \brief Filter functor for impact ionization
- */
-class ImpactIonizationFilterFunc
+class ImpactPhotoIonizationFilterFunc
 {
 public:
 
@@ -48,16 +40,10 @@ public:
                  density in m^-3 as a function of space and time
     * @param[in] t the current simulation time
     */
-    ImpactIonizationFilterFunc(
-        ScatteringProcess const& mcc_process,
-        double const mass,
-        amrex::ParticleReal const total_collision_prob,
-        amrex::ParticleReal const nu_max,
-        amrex::ParserExecutor<4> const& n_a_func,
+    ImpactPhotoIonizationFilterFunc(
+        double total_collision_prob_photo,
         amrex::Real t
-    ) : m_mcc_process(mcc_process.executor()), m_mass(mass),
-        m_total_collision_prob(total_collision_prob),
-        m_nu_max(nu_max), m_n_a_func(n_a_func), m_t(t) { }
+    ) : m_total_collision_prob_photo(total_collision_prob_photo), m_t(t) { }
 
     /**
     * \brief Functor call. This method determines if a given (electron) particle
@@ -68,61 +54,33 @@ public:
     * @param[in] engine the random number state and factory
     * @return true if a collision occurs, false otherwise
     */
-    template <typename PData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     bool operator() (
-        const PData& ptd, int const i, amrex::RandomEngine const& engine
+        int const mask, amrex::RandomEngine const& engine
     ) const noexcept
     {
-        using namespace amrex;
-        using std::sqrt;
-
         // determine if this particle should collide
-        if (Random(engine) > m_total_collision_prob) { return false; }
-
-        // get references to the particle to get its position
-        const auto& p = ptd.getSuperParticle(i);
-        ParticleReal x, y, z;
-        double E_coll;
-        get_particle_position(p, x, y, z);
-
-        // calculate neutral density at particle location
-        const ParticleReal n_a = m_n_a_func(x, y, z, m_t);
-
-        // get the particle velocity
-        const ParticleReal ux = ptd.m_rdata[PIdx::ux][i];
-        const ParticleReal uy = ptd.m_rdata[PIdx::uy][i];
-        const ParticleReal uz = ptd.m_rdata[PIdx::uz][i];
-
-        // calculate kinetic energy
-        constexpr auto eV = PhysConst::q_e;
-        E_coll = Algorithms::KineticEnergy<double>(ux, uy, uz, m_mass)/eV;
-
-        // get collision cross-section
-        const ParticleReal sigma_E = m_mcc_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll));
-
-        // calculate normalized collision frequency
-        const ParticleReal u_coll2 = ux*ux + uy*uy + uz*uz;
-        const ParticleReal nu_i = n_a * sigma_E * sqrt(u_coll2) / m_nu_max;
-
+        if (!mask) return false;
         // check if this collision should be performed
-        return (Random(engine) <= nu_i);
+ 
+        return (Random(engine) < m_total_collision_prob_photo); 
     }
 
 private:
-    ScatteringProcess::Executor m_mcc_process;
-    double m_mass;
-    amrex::ParticleReal m_total_collision_prob = 0;
-    amrex::ParticleReal m_nu_max;
-    amrex::ParserExecutor<4> m_n_a_func;
+    double m_total_collision_prob_photo = 0;
     amrex::Real m_t;
 };
+
+/** @file
+ *
+ * This file contains filter and transform functors for impact ionization
+ */
 
 
 /**
  * \brief Transform functor for impact ionization
  */
-class ImpactIonizationTransformFunc
+class ImpactPhotoIonizationTransformFunc
 {
 public:
 
@@ -139,19 +97,21 @@ public:
     * ensure accurate energy calculations (otherwise errors occur with single
     * or mixed precision builds of WarpX).
     *
-    * @param[in] energy_cost energy cost of ionization
-    * @param[in] mass1 mass of the colliding species
-    * @param[in] sqrt_kb_m value of sqrt(kB/m), where kB is Boltzmann's constant
+    * @param[in] f1 energy cost of ionization
+    * @param[in] f2 mass of the colliding species
+    * @param[in] PO2 value of sqrt(kB/m), where kB is Boltzmann's constant
                  and m is the background neutral mass
-    * @param[in] T_a_func ParserExecutor<4> function to get the background
+    * @param[in] K1 ParserExecutor<4> function to get the background
+                 temperature in Kelvin as a function of space and time
+    * @param[in] K2 ParserExecutor<4> function to get the background
                  temperature in Kelvin as a function of space and time
     * @param[in] t the current simulation time
     */
-    ImpactIonizationTransformFunc(
-        amrex::ParticleReal energy_cost, double mass1, amrex::ParticleReal sqrt_kb_m,
-        amrex::ParserExecutor<4> const& T_a_func, amrex::Real t
-    ) :  m_energy_cost(energy_cost), m_mass1(mass1),
-         m_sqrt_kb_m(sqrt_kb_m), m_T_a_func(T_a_func), m_t(t) { }
+    ImpactPhotoIonizationTransformFunc(
+        double f1, double f2, double PO2,
+        double K1, double K2, amrex::Real t
+    ) :  m_f1(f1), m_f2(f2),
+         m_PO2(PO2), m_K1(K1), m_K2(K2), m_t(t) { }
 
     /**
     * \brief Functor call. It determines the properties of the generated pair
@@ -170,26 +130,35 @@ public:
     template <typename DstData, typename SrcData>
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
     void operator() (DstData& dst1, DstData& dst2, SrcData& src,
-        int const i_src, int const i_dst1, int const i_dst2,
+        int const i_src, int const i_dst1, int const i_dst2, int Nphotons,
         amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex;
         using std::sqrt;
-
         // get references to the particle to get its position
         const auto& p = src.getSuperParticle(i_src);
         ParticleReal x, y, z;
-        double E_coll;
+        //double efficiency_photoionization = 0.5; // efficacité de la photoionisation 
         get_particle_position(p, x, y, z);
 
-        // calculate standard deviation in neutral velocity distribution using
-        // the local temperature
-        const ParticleReal ion_vel_std = m_sqrt_kb_m * std::sqrt(m_T_a_func(x, y, z, m_t));
+        // Tirage aléatoire pour fréquence et distance
+        const amrex::Real Rg2 = Random(engine);
+        const amrex::Real Rg3 = Random(engine);
+        // Fréquence du photon
+        const double f = m_f1 + Rg2 * (m_f2 - m_f1);
+        // Mean free path 
+        const double Lambda_gamma = m_K1*std::pow(m_K2 / m_K1,(f - m_f1)/(m_f2 - m_f1));
 
-        // get references to the original particle's velocity
-        auto& ux = src.m_rdata[PIdx::ux][i_src];
-        auto& uy = src.m_rdata[PIdx::uy][i_src];
-        auto& uz = src.m_rdata[PIdx::uz][i_src];
+        // Distance parcourue par le photon
+        const double d = -pow(Lambda_gamma,-1) * std::log(Rg3);
+
+        // Tirage aléatoire angles theta/phi
+        const double theta = Random(engine) * 2.0*M_PI;
+        const double phi   = std::acos(2.0 * Random(engine) - 1.0);
+        const double dx = d * std::sin(phi) * std::cos(theta);
+        const double dz = d * std::cos(phi);
+        // get references to the original particle weight
+        const ParticleReal w_src = src.m_rdata[PIdx::w][i_src];
 
         // get references to the new particles' velocities
         auto& e_ux = dst1.m_rdata[PIdx::ux][i_dst1];
@@ -198,35 +167,46 @@ public:
         auto& i_ux = dst2.m_rdata[PIdx::ux][i_dst2];
         auto& i_uy = dst2.m_rdata[PIdx::uy][i_dst2];
         auto& i_uz = dst2.m_rdata[PIdx::uz][i_dst2];
+        auto& i_w = dst2.m_rdata[PIdx::w][i_dst2];
+        auto& e_w = dst1.m_rdata[PIdx::w][i_dst1];
 
-        // calculate kinetic energy
-        constexpr auto eV = PhysConst::q_e;
-        E_coll = Algorithms::KineticEnergy<double>(ux, uy, uz, m_mass1)/eV;
+        auto& e_x = dst1.m_rdata[PIdx::x][i_dst1];
+        auto& e_z = dst1.m_rdata[PIdx::z][i_dst1];
+        auto& i_x = dst2.m_rdata[PIdx::x][i_dst2];
+        auto& i_z = dst2.m_rdata[PIdx::z][i_dst2];
+        
+        e_x = x + dx;
+        e_z = z + dz;            
+        i_x = x + dx;
+        i_z = z + dz;
+        i_uy = .0_prt;
+        i_ux = .0_prt;
+        i_uz = .0_prt;
+        e_uy = .0_prt;
+        e_ux = .0_prt;
+        e_uz = .0_prt;
 
-        // each electron gets half the energy (could change this later)
-        const auto E_out = static_cast<amrex::ParticleReal>((E_coll - m_energy_cost) / 2.0_prt * eV);
+        e_w = w_src/Nphotons; // assign weight to new electron
+        i_w = w_src/Nphotons; // assign weight to new ion
 
-        // precalculate often used value
-        constexpr auto c2 = PhysConst::c * PhysConst::c;
-        const auto mc2 = m_mass1*c2;
+#ifdef WARPX_DIM_XYZ
+        const double dy = d * std::sin(theta) * std::sin(phi);
+        auto& i_y = dst_ion.m_rdata[PIdx::y][i_dst2];
+        auto& e_y = dst1.m_rdata[PIdx::y][i_dst1];
+        i_y = y + dy;
+        e_y = .0_prt;
+        
+#endif
 
-        const amrex::ParticleReal up = sqrt(E_out * (E_out + 2.0_prt*mc2) / c2) / m_mass1;
-
-        // isotropically scatter electrons
-        ParticleUtils::RandomizeVelocity(ux, uy, uz, up, engine);
-        ParticleUtils::RandomizeVelocity(e_ux, e_uy, e_uz, up, engine);
-
-        // get velocities for the ion from a Maxwellian distribution
-        i_ux = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
-        i_uy = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
-        i_uz = ion_vel_std * RandomNormal(0_prt, 1.0_prt, engine);
-    }
+}
 
 private:
-    amrex::ParticleReal m_energy_cost;
-    double m_mass1;
-    amrex::ParticleReal m_sqrt_kb_m;
-    amrex::ParserExecutor<4> m_T_a_func;
+    double m_f1;
+    double m_f2;
+    double m_PO2;
+    double m_K1;
+    double m_K2;
+    int m_Nphotons;
     amrex::Real m_t;
 };
-#endif // WARPX_PARTICLES_COLLISION_IMPACT_IONIZATION_H_
+#endif // WARPX_PARTICLES_COLLISION_IMPACT_PHOTO_IONIZATION_H_

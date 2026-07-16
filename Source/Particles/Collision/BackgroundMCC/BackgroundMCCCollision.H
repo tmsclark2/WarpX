@@ -23,7 +23,7 @@ class BackgroundMCCCollision final
     : public CollisionBase
 {
 public:
-    explicit BackgroundMCCCollision (std::string const& collision_name);
+    BackgroundMCCCollision (std::string const& collision_name);
 
     ~BackgroundMCCCollision () override = default;
 
@@ -33,6 +33,7 @@ public:
     BackgroundMCCCollision& operator= ( BackgroundMCCCollision&& )       = delete;
 
     [[nodiscard]] amrex::ParticleReal get_nu_max (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
+    [[nodiscard]] amrex::ParticleReal get_nu_max_threebody (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
 
     /** Perform the collisions
      *
@@ -68,30 +69,100 @@ public:
                                  amrex::Real t
                                  );
 
+    /** Perform MCC ionization interactions in case of a photoionization process
+     *
+     * @param[in] lev the mesh-refinement level
+     * @param[in,out] cost pointer to (load balancing) cost corresponding to box where present particles are ionized.
+     * @param[in,out] species1,species2, species3 reference to species container used to inject
+     * new particles
+     * @param t current time
+     *
+     */
+
+    void doBackgroundPhotoIonization (
+                                 int lev,
+                                 amrex::LayoutData<amrex::Real>* cost,
+                                 double K1, 
+                                 double K2, 
+                                 double total_collision_prob_photo,
+                                 WarpXParticleContainer& species1,
+                                 WarpXParticleContainer& species2,
+                                 WarpXParticleContainer& species3,
+                                 amrex::Real t
+                                 );
+
+    void doBackgroundAttachment (
+                                int lev,
+                                amrex::LayoutData<amrex::Real>* cost,
+                                WarpXParticleContainer& species1,
+                                WarpXParticleContainer& species2,
+                                amrex::Real t
+                                );
+    void doBackgroundThreeBodyAttachment (
+                                int lev,
+                                amrex::LayoutData<amrex::Real>* cost,
+                                WarpXParticleContainer& species1,
+                                WarpXParticleContainer& species2,
+                                amrex::Real t
+                                );
+
+
 private:
 
     amrex::Vector<ScatteringProcess> m_scattering_processes;
     amrex::Vector<ScatteringProcess> m_ionization_processes;
+    amrex::Vector<ScatteringProcess> m_attachment_processes;
+    amrex::Vector<ScatteringProcess> m_three_body_attachment_processes;
     amrex::Gpu::DeviceVector<ScatteringProcess::Executor> m_scattering_processes_exe;
     amrex::Gpu::DeviceVector<ScatteringProcess::Executor> m_ionization_processes_exe;
+    amrex::Gpu::DeviceVector<ScatteringProcess::Executor> m_attachment_processes_exe;
+    amrex::Gpu::DeviceVector<ScatteringProcess::Executor> m_three_body_attachment_processes_exe;
 
     bool init_flag = false;
     bool ionization_flag = false;
+    bool photo_ionization_flag = false;
+    bool attachment_flag = false;
+    bool three_body_attachment_flag = false;
 
     amrex::ParticleReal m_mass1;
-
     amrex::ParticleReal m_max_background_density = 0;
+    amrex::ParticleReal m_max_background_density_2 = 0;
     amrex::ParticleReal m_background_mass;
     amrex::ParticleReal m_total_collision_prob;
     amrex::ParticleReal m_total_collision_prob_ioniz = 0;
+    amrex::ParticleReal m_total_collision_prob_attach = 0;
+    amrex::ParticleReal m_total_collision_prob_threebody = 0;
     amrex::ParticleReal m_nu_max;
+    amrex::ParticleReal m_nu_max_threebody;
+    amrex::ParticleReal m_nu_max_attach;
     amrex::ParticleReal m_nu_max_ioniz;
 
     amrex::Parser m_background_density_parser;
+    amrex::Parser m_background_density_parser_2;
     amrex::Parser m_background_temperature_parser;
 
     amrex::ParserExecutor<4> m_background_density_func;
+    amrex::ParserExecutor<4> m_background_density_func_2;
     amrex::ParserExecutor<4> m_background_temperature_func;
+
+    int Nphotons;
+    double f1;
+    double f2; 
+
+    double PO2; 
+    double K1; 
+    double K2; 
+    double pq; 
+    double tot_press; 
+    double q_press; 
+    double q_E; 
+    double total_collision_prob_photo;
+    //int N_photons; 
+
 };
+
+
+void remove_colliding_particle (
+    uint64_t& idcpu);
 
 #endif // WARPX_PARTICLES_COLLISION_BACKGROUNDMCCCOLLISION_H_
