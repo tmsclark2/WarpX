@@ -33,6 +33,7 @@ public:
     BackgroundMCCCollision& operator= ( BackgroundMCCCollision&& )       = delete;
 
     [[nodiscard]] amrex::ParticleReal get_nu_max (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
+    [[nodiscard]] amrex::ParticleReal get_nu_max_moller (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
 
     /** Perform the collisions
      *
@@ -67,7 +68,12 @@ public:
                                  WarpXParticleContainer& species2,
                                  amrex::Real t
                                  );
-
+    void doBackgroundMoller (
+                                 int lev,
+                                 amrex::LayoutData<amrex::Real>* cost,
+                                 WarpXParticleContainer& species1,
+                                 amrex::Real t
+                                 );
 private:
 
     amrex::Vector<ScatteringProcess> m_scattering_processes;
@@ -77,6 +83,7 @@ private:
 
     bool init_flag = false;
     bool ionization_flag = false;
+    bool moller_flag = false;
 
     amrex::ParticleReal m_mass1;
 

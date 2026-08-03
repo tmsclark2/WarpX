@@ -122,15 +122,23 @@ namespace BinaryCollisionUtils{
             std::string cross_section_file;
             pp_collision_name.query(kw_cross_section, cross_section_file);
 
+            // Optional momentum-transfer cross-section, only used by the screened
+            // Rutherford scattering angle model.
+            const std::string kw_cross_section_mt = scattering_process + "_cross_section_mt";
+            std::string cross_section_file_mt;
+            pp_collision_name.query(kw_cross_section_mt, cross_section_file_mt);
+
             const auto process_type = ScatteringProcess::parseProcessType(scattering_process);
 
-            // The energy cost (penalty) of the process, in eV. It is required for excitation
-            // and ionization, optional for charge exchange and two-product reactions (which may
-            // impose a fixed energy loss), and not read for elastic processes.
+            // The energy cost (penalty) of the process, in eV. It is required for excitation,
+            // ionization, and Moller scattering (used there as the low-energy cutoff of the
+            // analytic cross-section), optional for charge exchange and two-product reactions
+            // (which may impose a fixed energy loss), and not read for elastic processes.
             amrex::ParticleReal energy = 0._prt;
             const std::string kw_energy = scattering_process + "_energy";
             if (process_type == ScatteringProcessType::EXCITATION ||
-                process_type == ScatteringProcessType::IONIZATION) {
+                process_type == ScatteringProcessType::IONIZATION ||
+                process_type == ScatteringProcessType::MOLLER) {
                 utils::parser::getWithParser(
                     pp_collision_name, kw_energy.c_str(), energy);
             } else if (process_type != ScatteringProcessType::ELASTIC) {
@@ -151,7 +159,8 @@ namespace BinaryCollisionUtils{
                 scattering_process + "_scattering_angle_model", scattering_angle_model);
 
             scattering_processes.push_back(ScatteringProcess(
-                scattering_process, cross_section_file, energy, scattering_angle_model));
+                scattering_process, cross_section_file, energy, scattering_angle_model,
+                cross_section_file_mt));
         }
 
         return scattering_processes;

@@ -6,6 +6,7 @@
  */
 #include "BackgroundMCCCollision.H"
 
+#include "Moller.H"  
 #include "ImpactIonization.H"
 #include "Particles/Collision/BinaryCollision/BinaryCollisionUtils.H"
 #include "Particles/Collision/BinaryCollision/TwoProductUtil.H"
@@ -112,7 +113,22 @@ BackgroundMCCCollision::BackgroundMCCCollision (std::string const& collision_nam
             m_species_names.push_back(secondary_species);
 
             m_ionization_processes.push_back(std::move(process));
-        } else {
+        } 
+        else if (process.type() == ScatteringProcessType::MOLLER) {
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!moller_flag,
+                                             "Background MCC only supports a single moller process");
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!ionization_flag,
+                                             "Background MCC only supports a single ionization process");
+            ionization_flag = true;
+            moller_flag = true;
+
+            std::string secondary_species;
+            pp_collision_name.get("moller_species", secondary_species);
+            m_species_names.push_back(secondary_species);
+
+            m_ionization_processes.push_back(std::move(process));
+        } 
+        else {
             m_scattering_processes.push_back(std::move(process));
         }
     }
@@ -188,6 +204,78 @@ BackgroundMCCCollision::get_nu_max(amrex::Vector<ScatteringProcess> const& mcc_p
     return nu_max;
 }
 
+/** Calculate the maximum Moller collision frequency using a fixed number of
+ *  energy samples from 1e-4 eV up to at least 10x the Moller threshold energy
+ */
+amrex::ParticleReal
+BackgroundMCCCollision::get_nu_max_moller(amrex::Vector<ScatteringProcess> const& mcc_processes) const
+{
+    using namespace amrex::literals;
+    amrex::ParticleReal nu, nu_max = 0.0;
+    amrex::ParticleReal E_start = 1e-4_prt;
+    amrex::ParticleReal E_end = 30e6_prt;
+
+    // Moller's cross-section is computed analytically (not from a tabulated
+    // grid), so unlike get_nu_max the scan range is set directly from the
+    // process' energy threshold: it must reach well past 2*E_min or every
+    // energy in the scan gets skipped and nu_max is silently stuck at 0.
+    for (const auto &process : mcc_processes) {
+        auto const e_min = process.getEnergyPenalty();
+        E_end = std::max(E_end, 10.0_prt * e_min);
+    }
+
+    // Use a fixed number of samples so the scan cost does not blow up when
+    // E_end is extended to a much higher (e.g. relativistic) energy scale.
+    constexpr int n_steps = 25000;
+    amrex::ParticleReal const E_step = (E_end - E_start) / n_steps;
+
+    amrex::ParticleReal E = E_start;
+    while(E < E_end){
+        amrex::ParticleReal sigma_E = 0.0;
+        // rest energy in eV, consistent with E's units
+        amrex::ParticleReal mc2 = m_mass1 * PhysConst::c2 / PhysConst::q_e;
+        amrex::ParticleReal mc2_plus_E = mc2 + E;
+        // kappa = 2*pi*r_e^2 * mc^2 * (c/v)^2 ; (c/v)^2 = (mc^2+E)^2 / (E*(2*mc^2+E))
+        amrex::ParticleReal kappa = 2.0_prt * MathConst::pi * PhysConst::r_e * PhysConst::r_e
+                                    * mc2 * (mc2_plus_E * mc2_plus_E) / (E * (2.0_prt * mc2 + E));
+        // loop through all collision pathways
+        for (const auto &scattering_process : mcc_processes) {
+            // get collision cross-section
+            const amrex::ParticleReal E_min = scattering_process.getEnergyPenalty();
+            if (E <= 2.0 * E_min) {
+                continue;
+            }
+
+            amrex::ParticleReal E_minus_Emin = E - E_min;
+            amrex::ParticleReal mc2_plus_E_sq = mc2_plus_E * mc2_plus_E;
+
+            // Terme 1: 1 / E_min - 1 / (E - E_min)
+            amrex::ParticleReal term1 = (1.0 / E_min) - (1.0 / E_minus_Emin);
+
+            // Terme 2: (E - 2 * E_min) / (2 * (mc^2 + E)^2)
+            amrex::ParticleReal term2 = (E - 2.0 * E_min) / (2.0 * mc2_plus_E_sq);
+
+            // Terme 3: [mc^2 * (mc^2 + 2 * E) / (E * (mc^2 + E)^2)] * log(E_min / (E - E_min))
+            amrex::ParticleReal term3_factor = (mc2 * (mc2 + 2.0 * E)) / (E * mc2_plus_E_sq);
+            amrex::ParticleReal term3_log    = std::log(E_min / E_minus_Emin);
+            amrex::ParticleReal term3        = term3_factor * term3_log;
+
+            sigma_E += kappa * (term1 + term2 + term3);
+        }
+
+        // calculate collision frequency
+        nu = (
+              m_max_background_density
+              * std::sqrt(2.0_prt / m_mass1 * PhysConst::q_e)
+              * sigma_E * std::sqrt(E)
+              );
+        nu_max = std::max(nu_max, nu);
+        E+=E_step;
+    }
+    amrex::Print() << "nu_max" << nu_max << std::endl;
+    return nu_max;
+}
+
 void
 BackgroundMCCCollision::doCollisions (amrex::Real cur_time, amrex::Real dt, MultiParticleContainer* mypc)
 {
@@ -225,7 +313,13 @@ BackgroundMCCCollision::doCollisions (amrex::Real cur_time, amrex::Real dt, Mult
 
         if (ionization_flag) {
             // calculate maximum collision frequency for ionization
-            m_nu_max_ioniz = get_nu_max(m_ionization_processes);
+            // Moller's cross-section is analytic (see get_nu_max_moller), not
+            // tabulated, so it must use its own scan rather than get_nu_max,
+            // which would see the zero-valued placeholder grid (see
+            // ScatteringProcess::ScatteringProcess) and silently yield 0.
+            m_nu_max_ioniz = moller_flag ?
+                get_nu_max_moller(m_ionization_processes) :
+                get_nu_max(m_ionization_processes);
 
             // calculate total ionization probability
             auto coll_n_ioniz = m_nu_max_ioniz * dt;
@@ -290,7 +384,11 @@ BackgroundMCCCollision::doCollisions (amrex::Real cur_time, amrex::Real dt, Mult
 
         // secondly perform ionization through the SmartCopyFactory if needed
         if (ionization_flag) {
-            doBackgroundIonization(lev, cost, species1, species2, cur_time);
+            if (moller_flag) {
+                doBackgroundMoller(lev, cost, species1, cur_time);
+            } else {
+                doBackgroundIonization(lev, cost, species1, species2, cur_time);
+            }
         }
     }
 }
@@ -336,7 +434,7 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                           [=] AMREX_GPU_HOST_DEVICE (long ip, amrex::RandomEngine const& engine)
                           {
                               // determine if this particle should collide
-                              if (amrex::Random(engine) > total_collision_prob) { return; }
+                              if (amrex::Random(engine) > total_collision_prob) { return; } //1.0 if needed tests
 
                               amrex::ParticleReal x, y, z;
                               GetPosition.AsStored(ip, x, y, z);
@@ -381,7 +479,7 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                                   nu_i += n_a * sigma_E * v_coll / nu_max;
 
                                   // check if this collision should be performed
-                                  if (col_select > nu_i) { continue; }
+                                  if (col_select > 1) { continue; }
 
                                   // At this point the given particle has been chosen for a
                                   // collision with a background-gas particle of velocity
@@ -394,6 +492,14 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                                   // is computed as the second product but discarded.
                                   amrex::ParticleReal u1x_out, u1y_out, u1z_out;
                                   amrex::ParticleReal u2x_out, u2y_out, u2z_out;
+                                  // For the screened Rutherford angle model, evaluate the
+                                  // screening parameter at the collision energy (in eV);
+                                  // it is unused (and left at zero) for all other models.
+                                  const amrex::ParticleReal eta =
+                                      (scattering_process.m_scattering_angle_model
+                                       == ScatteringAngleModel::Screened_Rutherford)
+                                      ? scattering_process.getEta(static_cast<amrex::ParticleReal>(E_coll))
+                                      : amrex::ParticleReal(0);
                                   TwoProductComputeProductMomenta(
                                       ux[ip], uy[ip], uz[ip], m,
                                       ua_x, ua_y, ua_z, M,
@@ -403,7 +509,7 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                                       // TwoProductComputeProductMomenta expects the *released* energy here, hence
                                       // the negative sign; the energy penalty is also converted from eV to Joules.
                                       scattering_process.m_scattering_angle_model,
-                                      engine);
+                                      engine, eta);
 
                                   // update projectile velocity with new components in labframe
                                   // (the background-gas recoil u2*_out is discarded)
@@ -465,6 +571,60 @@ void BackgroundMCCCollision::doBackgroundIonization
 
         setNewParticleIDs(elec_tile, np_elec, num_added);
         setNewParticleIDs(ion_tile, np_ion, num_added);
+
+        if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
+        {
+            amrex::Gpu::synchronize();
+            wt = static_cast<amrex::Real>(amrex::second()) - wt;
+            amrex::HostDevice::Atomic::Add( &(*cost)[pti.index()], wt);
+        }
+    }
+}
+
+void BackgroundMCCCollision::doBackgroundMoller
+( int lev, amrex::LayoutData<amrex::Real>* cost,
+  WarpXParticleContainer& species1, amrex::Real t)
+{
+    ABLASTR_PROFILE("BackgroundMCCCollision::doBackgroundIonization()");
+
+    const SmartCopyFactory copy_factory_elec(species1, species1);
+    const auto CopyElec = copy_factory_elec.getSmartCopy();
+
+    const auto Filter = MollerFilterFunc(
+                                                   m_ionization_processes[0],
+                                                   m_mass1, m_total_collision_prob_ioniz,
+                                                   m_nu_max_ioniz, m_background_density_func, t
+                                                   );
+
+    const amrex::ParticleReal sqrt_kb_m = std::sqrt(PhysConst::kb / m_background_mass);
+    const amrex::ParticleReal E_min = m_ionization_processes[0].getEnergyPenalty();
+
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+    for (WarpXParIter pti(species1, lev); pti.isValid(); ++pti) {
+
+        if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
+        {
+            amrex::Gpu::synchronize();
+        }
+        auto wt = static_cast<amrex::Real>(amrex::second());
+
+        auto& elec_tile = species1.ParticlesAt(lev, pti);
+
+        const auto np_elec = elec_tile.numParticles();
+
+        auto Transform = MollerTransformFunc(
+                                                       m_ionization_processes[0].getEnergyPenalty(),
+                                                       m_mass1, sqrt_kb_m, m_background_temperature_func, t, E_min
+                                                       );
+
+        const auto num_added = filterCopyTransformParticles<1>(species1,
+                                                               elec_tile, elec_tile, np_elec,
+                                                               Filter, CopyElec, Transform
+                                                               );
+        amrex::Print() << "num_added" << num_added << std::endl;
+        setNewParticleIDs(elec_tile, np_elec, num_added);
 
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
         {
