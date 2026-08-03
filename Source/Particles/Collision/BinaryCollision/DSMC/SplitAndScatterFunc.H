@@ -276,6 +276,27 @@ public:
                 const auto src0_idx = static_cast<int>(p_pair_indices_0[i]);
                 const auto src1_idx = static_cast<int>(p_pair_indices_1[i]);
 
+                // For the screened Rutherford angle model, evaluate the screening parameter
+                // at the collision energy. The collision energy is recomputed here from the
+                // reactant momenta using the same convention as the cross-section lookup (see
+                // CollisionFilterFunc.H); it is unused (and left at zero) for other models.
+                amrex::ParticleReal eta = 0._prt;
+                if (scattering_process.m_scattering_angle_model
+                    == ScatteringAngleModel::Screened_Rutherford) {
+                    constexpr amrex::ParticleReal me = PhysConst::m_e;
+                    const amrex::ParticleReal p1x = (m0 == 0) ? me*soa_0.m_rdata[PIdx::ux][src0_idx] : m0*soa_0.m_rdata[PIdx::ux][src0_idx];
+                    const amrex::ParticleReal p1y = (m0 == 0) ? me*soa_0.m_rdata[PIdx::uy][src0_idx] : m0*soa_0.m_rdata[PIdx::uy][src0_idx];
+                    const amrex::ParticleReal p1z = (m0 == 0) ? me*soa_0.m_rdata[PIdx::uz][src0_idx] : m0*soa_0.m_rdata[PIdx::uz][src0_idx];
+                    const amrex::ParticleReal p2x = (m1 == 0) ? me*soa_1.m_rdata[PIdx::ux][src1_idx] : m1*soa_1.m_rdata[PIdx::ux][src1_idx];
+                    const amrex::ParticleReal p2y = (m1 == 0) ? me*soa_1.m_rdata[PIdx::uy][src1_idx] : m1*soa_1.m_rdata[PIdx::uy][src1_idx];
+                    const amrex::ParticleReal p2z = (m1 == 0) ? me*soa_1.m_rdata[PIdx::uz][src1_idx] : m1*soa_1.m_rdata[PIdx::uz][src1_idx];
+                    amrex::ParticleReal E_coll_J, v_rel_COM, lab_to_COM;
+                    BinaryCollisionUtils::get_collision_parameters(
+                        p1x, p1y, p1z, p2x, p2y, p2z, m0, m1,
+                        E_coll_J, v_rel_COM, lab_to_COM);
+                    eta = scattering_process.getEta(E_coll_J / PhysConst::q_e);
+                }
+
                 TwoProductComputeProductMomenta(
                     soa_0.m_rdata[PIdx::ux][src0_idx],
                     soa_0.m_rdata[PIdx::uy][src0_idx],
@@ -293,7 +314,7 @@ public:
                     // TwoProductComputeProductMomenta expects the *released* energy here, hence the
                     // negative sign; the energy penalty is also converted from eV to Joules.
                     scattering_process.m_scattering_angle_model,
-                    engine);
+                    engine, eta);
             }
 
             // Next perform all product-producing collisions
@@ -401,14 +422,24 @@ public:
                 auto& uy3 = soa_products_data[3].m_rdata[PIdx::uy][slot3_idx];
                 auto& uz3 = soa_products_data[3].m_rdata[PIdx::uz][slot3_idx];
 
-                // Note: in RZ/RCYLINDER geometry, ux0/uy0 and ux2,3/uy2,3 have already been
-                // rotated into each particle's own local curvilinear frame (theta = 0) by
-                // WarpXParticleContainer::TransformMomentumToCurvilinear(), called once for the
-                // whole particle container in CollisionHandler::doCollisions() before any collision
-                // routine runs. They are combined directly below, with no further per-pair rotation,
-                // for consistency with CollisionFilterFunc.H (which selects this pair for ionization
-                // using that same convention) and with TwoProductComputeProductMomenta (used by every
-                // other DSMC scattering process).
+#if defined(WARPX_DIM_RZ) || defined(WARPX_DIM_RCYLINDER)
+                /* In RZ and RCYLINDER geometry, macroparticles can collide with other macroparticles
+                * in the same *cylindrical* cell. For this reason, collisions between macroparticles
+                * are actually not local in space. In this case, the underlying assumption is that
+                * particles within the same cylindrical cell represent a cylindrically-symmetry
+                * momentum distribution function. Therefore, here, we temporarily rotate the
+                * momentum of one of the macroparticles in agreement with this cylindrical symmetry.
+                * (This is technically only valid if we use only the m=0 azimuthal mode in the simulation;
+                * there is a corresponding assert statement at initialization.)
+                */
+                amrex::ParticleReal const theta = (
+                    soa_products_data[2].m_rdata[PIdx::theta][slot2_idx]
+                    - soa_products_data[0].m_rdata[PIdx::theta][slot0_idx]
+                );
+                amrex::ParticleReal const ux0buf = ux0;
+                ux0 = ux0buf*std::cos(theta) - uy0*std::sin(theta);
+                uy0 = ux0buf*std::sin(theta) + uy0*std::cos(theta);
+#endif
 
                 // for simplicity (for now) we assume non-relativistic particles
                 // and simply calculate the center-of-momentum velocity from the
@@ -431,18 +462,9 @@ public:
                 // calculate kinetic energy of the collision
                 const amrex::ParticleReal p_non_target_in = m0 * std::sqrt(ux0*ux0 + uy0*uy0 + uz0*uz0);
                 const amrex::ParticleReal E_coll = 0.5_prt * p_non_target_in * p_non_target_in * (1.0_prt/m0 + 1.0_prt/m1);
-
                 // subtract the energy cost for ionization (converted from eV to J)
-                amrex::ParticleReal E_out = E_coll - scattering_process.m_energy_penalty * PhysConst::q_e;
-
-                // clamp E_out to 0: CollisionFilterFunc.H selects this pair for ionization
-                // using  a differently-computed (relativistic, whole-pair) collision energy,
-                // so E_out can come out (slightly) negative here even though the pair cleared
-                // the ionization threshold there; without the floor, the sqrt() calls below
-                // would produce a NaN velocity in such cases.
-                // TODO: update the E_coll calculation above to match the calculation in
-                // CollisionFilterFunc.H
-                E_out = amrex::max(E_out, 0.0_prt);
+                const amrex::ParticleReal E_out =
+                    E_coll - scattering_process.m_energy_penalty * PhysConst::q_e;
 
                 // The kinematics of the ionization event (i.e. how the energy and momentum are
                 // distributed among the products) depend on the nature of the incident particle
@@ -554,6 +576,13 @@ public:
                 ux3 += uCOM_x;
                 uy3 += uCOM_y;
                 uz3 += uCOM_z;
+
+#if defined(WARPX_DIM_RZ) || defined(WARPX_DIM_RCYLINDER)
+                /* Undo the earlier velocity rotation. */
+                amrex::ParticleReal const ux0buf_new = ux0;
+                ux0 = ux0buf_new*std::cos(-theta) - uy0*std::sin(-theta);
+                uy0 = ux0buf_new*std::sin(-theta) + uy0*std::cos(-theta);
+#endif
             }
         });
 
