@@ -28,6 +28,9 @@ public:
     /* Perform all of the collisions */
     void doCollisions (int step, amrex::Real cur_time, amrex::Real dt, MultiParticleContainer* mypc);
 
+    [[nodiscard]] const amrex::Vector<std::unique_ptr<CollisionBase>>& GetAllCollisions () const
+        { return allcollisions; }
+
 private:
 
     amrex::Vector<std::string> collision_names;

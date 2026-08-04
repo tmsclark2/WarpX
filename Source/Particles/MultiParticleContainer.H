@@ -335,6 +335,8 @@ public:
 
     [[nodiscard]] std::vector<std::string> GetSpeciesNames() const { return species_names; }
 
+    [[nodiscard]] CollisionHandler& GetCollisionHandler() const { return *collisionhandler; }
+
     [[nodiscard]] std::vector<std::string> GetLasersNames() const { return lasers_names; }
 
     [[nodiscard]] std::vector<std::string> GetSpeciesAndLasersNames() const

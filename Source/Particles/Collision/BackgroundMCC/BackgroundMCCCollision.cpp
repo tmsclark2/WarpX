@@ -26,9 +26,26 @@
 #include <ablastr/profiler/ProfilerWrapper.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_REAL.H>
+#include <AMReX_Reduce.H>
 #include <AMReX_Vector.H>
 
 #include <string>
+
+namespace {
+    /** Sum of the statistical weight of the particles in [start, start+count)
+     * of a particle tile, used to turn a macroparticle count into a weighted
+     * (physical) event count for the MCCSwarmParameters reduced diagnostic.
+     */
+    amrex::Real sumTileWeight (WarpXParticleContainer::ParticleTileType& tile,
+                                int start, int count)
+    {
+        if (count == 0) { return 0.0; }
+        auto ptd = tile.getParticleTileData();
+        return amrex::Reduce::Sum<amrex::Real>(count,
+            [=] AMREX_GPU_DEVICE (int i) -> amrex::Real { return ptd.m_rdata[PIdx::w][start+i]; },
+            0.0);
+    }
+}
 
 BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name)
     : CollisionBase(collision_name)
@@ -347,6 +364,12 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
 {
     ABLASTR_PROFILE("BackgroundMCCCollision::doCollisions()");
     using namespace amrex::literals;
+
+    // reset the event-weight counters -- they accumulate only the events
+    // performed during this call, for the MCCSwarmParameters reduced diag
+    m_ioniz_event_weight = 0.0;
+    m_attach_event_weight = 0.0;
+
     auto& species1 = mypc->GetParticleContainerFromName(m_species_names[0]);
     // this is a very ugly hack to have species2 be a reference and be
     // defined in the scope of doCollisions
@@ -689,6 +712,11 @@ void BackgroundMCCCollision::doBackgroundIonization
         setNewParticleIDs(elec_tile, np_elec, num_added);
         setNewParticleIDs(ion_tile, np_ion, num_added);
 
+        if (m_track_events) {
+            amrex::HostDevice::Atomic::Add(&m_ioniz_event_weight,
+                sumTileWeight(ion_tile, static_cast<int>(np_ion), static_cast<int>(num_added)));
+        }
+
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
         {
             amrex::Gpu::synchronize();
@@ -760,6 +788,13 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
         setNewParticleIDs(elec_tile, np_elec, num_added+num_added2);
         setNewParticleIDs(ion_tile, np_ion, num_added);
         setNewParticleIDs(ion_tile_2, np_ion_2, num_added2);
+
+        if (m_track_events) {
+            amrex::HostDevice::Atomic::Add(&m_ioniz_event_weight,
+                sumTileWeight(ion_tile, static_cast<int>(np_ion), static_cast<int>(num_added))
+                + sumTileWeight(ion_tile_2, static_cast<int>(np_ion_2), static_cast<int>(num_added2)));
+        }
+
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
         {
             amrex::Gpu::synchronize();
@@ -812,6 +847,11 @@ void BackgroundMCCCollision::doBackgroundAttachment
                                                                );
         setNewParticleIDs(ion_tile, np_ion, num_added);
 
+        if (m_track_events) {
+            amrex::HostDevice::Atomic::Add(&m_attach_event_weight,
+                sumTileWeight(ion_tile, static_cast<int>(np_ion), static_cast<int>(num_added)));
+        }
+
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
         {
             amrex::Gpu::synchronize();
@@ -863,6 +903,11 @@ void BackgroundMCCCollision::doBackgroundThreeBodyAttachment
                                                                Filter, CopyIon, Transform
                                                                );
         setNewParticleIDs(ion_tile, np_ion, num_added);
+
+        if (m_track_events) {
+            amrex::HostDevice::Atomic::Add(&m_attach_event_weight,
+                sumTileWeight(ion_tile, static_cast<int>(np_ion), static_cast<int>(num_added)));
+        }
 
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
         {

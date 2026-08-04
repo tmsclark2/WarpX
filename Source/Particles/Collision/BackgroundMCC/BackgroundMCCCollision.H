@@ -35,6 +35,32 @@ public:
     [[nodiscard]] amrex::ParticleReal get_nu_max (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
     [[nodiscard]] amrex::ParticleReal get_nu_max_threebody (amrex::Vector<ScatteringProcess> const& mcc_processes) const;
 
+    //! whether this collision creates particles through electron-impact (or photo-) ionization
+    [[nodiscard]] bool does_ionization () const { return ionization_flag; }
+    //! whether this collision removes electrons through attachment (two- or three-body)
+    [[nodiscard]] bool does_attachment () const { return attachment_flag || three_body_attachment_flag; }
+
+    //! sum of the statistical weight of all ionization events performed the last time
+    //! doCollisions() was called (i.e. during the most recently completed step)
+    [[nodiscard]] amrex::Real get_ionization_event_weight () const { return m_ioniz_event_weight; }
+    //! sum of the statistical weight of all attachment events (two- or three-body) performed
+    //! the last time doCollisions() was called (i.e. during the most recently completed step)
+    [[nodiscard]] amrex::Real get_attachment_event_weight () const { return m_attach_event_weight; }
+
+    //! Turns on the per-step event-weight bookkeeping used by
+    //! get_ionization_event_weight()/get_attachment_event_weight(). Off by
+    //! default so that runs that do not use the MCCSwarmParameters reduced
+    //! diagnostic do not pay for it; called by that diagnostic's constructor
+    //! on the collisions it needs.
+    void EnableEventTracking () { m_track_events = true; }
+
+    //! background gas number density used to normalize the collision
+    //! probabilities (assumed spatially uniform for swarm-parameter runs)
+    [[nodiscard]] amrex::ParticleReal get_max_background_density () const { return m_max_background_density; }
+    //! background gas temperature parser, evaluated as T(x,y,z,t) [K]
+    [[nodiscard]] amrex::ParserExecutor<4> const& get_background_temperature_func () const
+        { return m_background_temperature_func; }
+
     /** Perform the collisions
      *
      * @param cur_time Current time
@@ -123,6 +149,15 @@ private:
     bool photo_ionization_flag = false;
     bool attachment_flag = false;
     bool three_body_attachment_flag = false;
+
+    //! weighted count of ionization/attachment events performed during the
+    //! most recent doCollisions() call, reset at the start of each call --
+    //! used by the MCCSwarmParameters reduced diagnostic
+    amrex::Real m_ioniz_event_weight = 0.0;
+    amrex::Real m_attach_event_weight = 0.0;
+    //! guards the (small but non-zero) cost of maintaining the counters
+    //! above so that it is only paid when a diagnostic actually reads them
+    bool m_track_events = false;
 
     amrex::ParticleReal m_mass1;
     amrex::ParticleReal m_max_background_density = 0;

@@ -40,6 +40,8 @@ public:
 
     [[nodiscard]] bool use_global_debye_length() const {return m_use_global_debye_length;}
 
+    [[nodiscard]] const amrex::Vector<std::string>& get_species_names() const { return m_species_names; }
+
 protected:
 
     std::string m_collision_name;
