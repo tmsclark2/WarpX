@@ -14,11 +14,13 @@
 
 #include <string>
 
+enum class CollisionSteppingMode { Supercycle, Subcycle };
+
 class CollisionBase
 {
 public:
 
-    CollisionBase (const std::string& collision_name);
+    explicit CollisionBase (const std::string& collision_name);
 
     virtual void doCollisions (amrex::Real /*cur_time*/, amrex::Real /*dt*/, MultiParticleContainer* /*mypc*/ ){}
 
@@ -29,15 +31,27 @@ public:
 
     virtual ~CollisionBase() = default;
 
-    [[nodiscard]] int get_ndt() const {return m_ndt;}
+    void BackwardCompatibility ();
+
+    [[nodiscard]] int get_ndt() const { return m_ndt; }
+
+    [[nodiscard]] CollisionSteppingMode get_collision_stepping_mode() const
+        { return m_collision_stepping_mode; }
 
     [[nodiscard]] bool use_global_debye_length() const {return m_use_global_debye_length;}
 
 protected:
 
+    std::string m_collision_name;
     amrex::Vector<std::string> m_species_names;
+<<<<<<< HEAD
+    int m_ndt = 1;
+    CollisionSteppingMode m_collision_stepping_mode = CollisionSteppingMode::Supercycle;
     std::string m_photo_species_name;
-    int m_ndt;
+=======
+
+
+>>>>>>> origin
 
     bool m_use_global_debye_length = false;
 
