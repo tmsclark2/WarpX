@@ -252,11 +252,10 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
         p_mask[i] = filter(src_data, i, engine);
         p_mask2[i] = filter2(p_mask[i], engine);
         if (p_mask2[i]){
-            src_data.getSuperParticle(i);
             const ParticleReal w_src = src_data.m_rdata[PIdx::w][i];
             Numberphotons= w_src; //-static_cast<int>(std::floor(w_src));
-            if ((Numberphotons>=1000)){
-                Numberphotons=1000;
+            if ((Numberphotons>=10000)){
+                Numberphotons=10000;
             }
             if(Numberphotons<=0){
                 Numberphotons=0;

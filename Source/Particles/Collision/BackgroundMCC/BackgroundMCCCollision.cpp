@@ -151,23 +151,18 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
                 pp_collision_name.getarr("frequencies_photo", frequencies_photo);
                 f1 = frequencies_photo[0];
                 f2 = frequencies_photo[1];
-                //const double f1 = 2.925e15; // Hz
-                //const double f2 = 3.059e15; // Hz
+
                 pp_collision_name.get("O2_pressure", PO2);
                 pp_collision_name.get("quenching_ratio", pq);
                 pp_collision_name.get("electric_field_ratio", q_E);
                 pp_collision_name.get("total_pressure", tot_press);
 
-                //PO2 = 150.0;   // Torr
                 K1 = 3.5 * PO2; // Torr-1 m^-1
                 K2 = 200.0 * PO2; // Torr-1 m^-1
-                //pq = 0.04; // quenching pressure ratio
-                //p = 750; // pressure in Torr
-                q_press = tot_press/(tot_press+pq); // quenching efficiency pressure
-                //q_E = 0.06; // photoionization efficiency
-                //pp_collision_name.get("Num_photons", N_photons);
-                total_collision_prob_photo = q_press*q_E;
+   
+                q_press = pq/(tot_press+pq); 
 
+                total_collision_prob_photo = q_press*q_E;
             }
 
             m_ionization_processes.push_back(std::move(process));
@@ -843,7 +838,6 @@ void BackgroundMCCCollision::doBackgroundAttachment
         auto& elec_tile = species1.ParticlesAt(lev, pti);
         auto& ion_tile = species2.ParticlesAt(lev, pti);
 
-        const auto np_elec = elec_tile.numParticles();
         const auto np_ion = ion_tile.numParticles();
 
         auto Transform = ImpactAttachmentTransformFunc(
@@ -896,7 +890,6 @@ void BackgroundMCCCollision::doBackgroundThreeBodyAttachment
         auto& elec_tile = species1.ParticlesAt(lev, pti);
         auto& ion_tile = species2.ParticlesAt(lev, pti);
 
-        const auto np_elec = elec_tile.numParticles();
         const auto np_ion = ion_tile.numParticles();
 
         auto Transform = ImpactThreeBodyAttachmentTransformFunc(

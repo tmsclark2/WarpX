@@ -152,11 +152,14 @@ public:
         // Distance parcourue par le photon
         const double d = -pow(Lambda_gamma,-1) * std::log(Rg3);
 
-        // Tirage aléatoire angles theta/phi
-        const double theta = Random(engine) * 2.0*M_PI;
-        const double phi   = std::acos(2.0 * Random(engine) - 1.0);
-        const double dx = d * std::sin(phi) * std::cos(theta);
-        const double dz = d * std::cos(phi);
+        // Tirage aléatoire angles theta/phi (angles de propagation du photon,
+        // a ne pas confondre avec le theta de position en RZ)
+        const double phot_theta = Random(engine) * 2.0*M_PI;
+        const double phot_phi   = std::acos(2.0 * Random(engine) - 1.0);
+        const double dx = d * std::sin(phot_phi) * std::cos(phot_theta);
+        const double dy = d * std::sin(phot_phi) * std::sin(phot_theta);
+        const double dz = d * std::cos(phot_phi);
+        amrex::ignore_unused(dy); // only used in the RZ and 3D branches below
         // get references to the original particle weight
         const ParticleReal w_src = src.m_rdata[PIdx::w][i_src];
 
@@ -174,27 +177,49 @@ public:
         auto& e_z = dst1.m_rdata[PIdx::z][i_dst1];
         auto& i_x = dst2.m_rdata[PIdx::x][i_dst2];
         auto& i_z = dst2.m_rdata[PIdx::z][i_dst2];
-        
+
+#if defined(WARPX_DIM_RZ)
+        // In RZ, PIdx::x stores the radius r (not a Cartesian x), and the
+        // azimuthal angle is stored separately in PIdx::theta. The photon
+        // displacement (dx, dy, dz) was computed above in the local
+        // Cartesian frame centered on the emitting particle, so it must be
+        // converted back to (r, theta) before being written out, instead of
+        // being written directly into the r slot.
+        const double x_new = x + dx;
+        const double y_new = y + dy;
+        const double r_new     = std::sqrt(x_new*x_new + y_new*y_new);
+        const double theta_new = std::atan2(y_new, x_new);
+
+        auto& e_theta = dst1.m_rdata[PIdx::theta][i_dst1];
+        auto& i_theta = dst2.m_rdata[PIdx::theta][i_dst2];
+
+        e_x = r_new;
+        i_x = r_new;
+        e_z = z + dz;
+        i_z = z + dz;
+        e_theta = theta_new;
+        i_theta = theta_new;
+#else
         e_x = x + dx;
-        e_z = z + dz;            
+        e_z = z + dz;
         i_x = x + dx;
         i_z = z + dz;
+#endif
         i_uy = .0_prt;
         i_ux = .0_prt;
         i_uz = .0_prt;
         e_uy = .0_prt;
         e_ux = .0_prt;
         e_uz = .0_prt;
+
         e_w = w_src/Nphotons; // assign weight to new electron
         i_w = w_src/Nphotons; // assign weight to new ion
 
-#ifdef WARPX_DIM_XYZ
-        const double dy = d * std::sin(theta) * std::sin(phi);
-        auto& i_y = dst_ion.m_rdata[PIdx::y][i_dst2];
+#if defined(WARPX_DIM_3D)
         auto& e_y = dst1.m_rdata[PIdx::y][i_dst1];
+        auto& i_y = dst2.m_rdata[PIdx::y][i_dst2];
+        e_y = y + dy;
         i_y = y + dy;
-        e_y = .0_prt;
-        
 #endif
 
 }
