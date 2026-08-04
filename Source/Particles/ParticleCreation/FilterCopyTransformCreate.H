@@ -131,48 +131,11 @@ std::pair<Index, Index>  filterCopyTransformCreateParticles (DstPC& pc1, DstPC& 
     }
     });
 
-    ParticleCreation::DefaultInitializeRuntimeAttributes(dst1,
-                                       0, 0,
-                                       pc1.getUserRealAttribs(), pc1.getUserIntAttribs(),
-                                       pc1.GetRealSoANames(), pc1.GetIntSoANames(),
-                                       pc1.getUserRealAttribParser(),
-                                       pc1.getUserIntAttribParser(),
-#ifdef WARPX_QED
-                                       false, // do not initialize QED quantities, since they were initialized
-                                              // when calling the CopyFunc functor
-                                       pc1.get_breit_wheeler_engine_ptr(),
-                                       pc1.get_quantum_sync_engine_ptr(),
-#endif
-                                       pc1.getIonizationInitialLevel(),
-                                       old_np1, new_np1);
-    ParticleCreation::DefaultInitializeRuntimeAttributes(dst2,
-                                       0, 0,
-                                       pc2.getUserRealAttribs(), pc2.getUserIntAttribs(),
-                                       pc2.GetRealSoANames(), pc2.GetIntSoANames(),
-                                       pc2.getUserRealAttribParser(),
-                                       pc2.getUserIntAttribParser(),
-#ifdef WARPX_QED
-                                       false, // do not initialize QED quantities, since they were initialized
-                                              // when calling the CopyFunc functor
-                                       pc2.get_breit_wheeler_engine_ptr(),
-                                       pc2.get_quantum_sync_engine_ptr(),
-#endif
-                                       pc2.getIonizationInitialLevel(),
-                                       old_np2, new_np2);
-    ParticleCreation::DefaultInitializeRuntimeAttributes(dst3,
-                                       0, 0,
-                                       pc3.getUserRealAttribs(), pc3.getUserIntAttribs(),
-                                       pc3.GetRealSoANames(), pc3.GetIntSoANames(),
-                                       pc3.getUserRealAttribParser(),
-                                       pc3.getUserIntAttribParser(),
-#ifdef WARPX_QED
-                                       false, // do not initialize QED quantities, since they were initialized
-                                              // when calling the CopyFunc functor
-                                       pc3.get_breit_wheeler_engine_ptr(),
-                                       pc3.get_quantum_sync_engine_ptr(),
-#endif
-                                       pc3.getIonizationInitialLevel(),
-                                       old_np3, new_np3);
+    // do_qed_comps defaults to false: QED quantities were already initialized
+    // when calling the CopyFunc functor
+    ParticleCreation::DefaultInitializeRuntimeAttributes(dst1, pc1, old_np1, new_np1);
+    ParticleCreation::DefaultInitializeRuntimeAttributes(dst2, pc2, old_np2, new_np2);
+    ParticleCreation::DefaultInitializeRuntimeAttributes(dst3, pc3, old_np3, new_np3);
     Gpu::synchronize();
     return {num_added, num_added2};
 }

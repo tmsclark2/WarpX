@@ -145,12 +145,12 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!attachment_flag,
                                              "Background MCC only supports a single attachment process");
             attachment_flag = true;
+            // doBackgroundAttachment() only ever creates a particle in the
+            // first species -- any additional name is parsed but unused, so
+            // only read the first one here.
             amrex::Vector<std::string> attachment_species;
             pp_collision_name.getarr("attachment_species", attachment_species);
             m_species_names.push_back(attachment_species[0]);
-            if (attachment_species.size() == 2) {
-                m_species_names.push_back(attachment_species[1]);
-            }
 
             m_attachment_processes.push_back(std::move(process));
         }
@@ -186,12 +186,12 @@ BackgroundMCCCollision::BackgroundMCCCollision(std::string const& collision_name
                     (m_max_background_density_2 > 0),
                     "The maximum background density of second species must be greater than 0."
                 );
+            // doBackgroundThreeBodyAttachment() only ever creates a particle
+            // in the first species -- any additional name is parsed but
+            // unused, so only read the first one here.
             amrex::Vector<std::string> three_body_attachment_species;
             pp_collision_name.getarr("three_body.species", three_body_attachment_species);
             m_species_names.push_back(three_body_attachment_species[0]);
-            if (three_body_attachment_species.size() == 2) {
-                m_species_names.push_back(three_body_attachment_species[1]);
-            }
 
             m_three_body_attachment_processes.push_back(std::move(process));
         }
@@ -408,6 +408,10 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
                           std::to_string(coll_n_attach) + " is > 0.1 and attachment probability is = " +
                           std::to_string(m_total_collision_prob_attach) + "\n");
             }
+
+            // the attachment product species mass is taken as the background
+            // mass, same convention as for ionization/three-body above
+            m_background_mass = species2.getMass();
         }
 
         else if (three_body_attachment_flag) {
@@ -496,6 +500,21 @@ BackgroundMCCCollision::doCollisions(amrex::Real cur_time, amrex::Real dt, Multi
     else if (three_body_attachment_flag) {
             doBackgroundThreeBodyAttachment(lev, cost, species1, species2, cur_time);
         }
+    }
+
+    // Photoionization displaces the newly created electron/ion pair away from
+    // the source particle by the photon's mean free path, so they can land
+    // outside the box/tile they were appended to. A Redistribute() is needed
+    // here (unlike the other creation processes above, which keep new
+    // particles at the source particle's position) so that GatherAndPush,
+    // which runs right after doCollisions() and before the next full
+    // Redistribute(), does not index into field data using an out-of-tile
+    // particle position.
+    if (ionization_flag && photo_ionization_flag) {
+        auto& species3 = mypc->GetParticleContainerFromName(m_photo_species_name);
+        species1.Redistribute();
+        species2.Redistribute();
+        species3.Redistribute();
     }
 }
 
@@ -685,7 +704,7 @@ void BackgroundMCCCollision::doBackgroundPhotoIonization
 ( int lev, amrex::LayoutData<amrex::Real>* cost, double K1_, double K2_, double total_collision_prob_photo_,
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, WarpXParticleContainer& species3, amrex::Real t)
 {
-    WARPX_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
+    ABLASTR_PROFILE("BackgroundMCCCollision::doBackgroundPhotoIonization()");
     // Probability of collision for photoionization
     const SmartCopyFactory copy_factory_elec(species1, species1);
     const SmartCopyFactory copy_factory_ion(species1, species2);
@@ -754,7 +773,7 @@ void BackgroundMCCCollision::doBackgroundAttachment
 ( int lev, amrex::LayoutData<amrex::Real>* cost,
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, amrex::Real t)
 {
-    WARPX_PROFILE("BackgroundMCCCollision::doBackgroundAttachment()");
+    ABLASTR_PROFILE("BackgroundMCCCollision::doBackgroundAttachment()");
     const SmartCopyFactory copy_factory_ion(species1, species2);
     const auto CopyIon = copy_factory_ion.getSmartCopy();
 
@@ -806,7 +825,7 @@ void BackgroundMCCCollision::doBackgroundThreeBodyAttachment
 ( int lev, amrex::LayoutData<amrex::Real>* cost,
   WarpXParticleContainer& species1, WarpXParticleContainer& species2, amrex::Real t)
 {
-    WARPX_PROFILE("BackgroundMCCCollision::doBackgroundThreeBodyAttachment()");
+    ABLASTR_PROFILE("BackgroundMCCCollision::doBackgroundThreeBodyAttachment()");
     const SmartCopyFactory copy_factory_ion(species1, species2);
     const auto CopyIon = copy_factory_ion.getSmartCopy();
 

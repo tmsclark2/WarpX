@@ -130,7 +130,9 @@ namespace BinaryCollisionUtils{
             amrex::ParticleReal energy = 0._prt;
             const std::string kw_energy = scattering_process + "_energy";
             if (process_type == ScatteringProcessType::EXCITATION ||
-                process_type == ScatteringProcessType::IONIZATION) {
+                process_type == ScatteringProcessType::IONIZATION ||
+                process_type == ScatteringProcessType::ATTACHMENT||
+                process_type == ScatteringProcessType::THREE_BODY) {
                 utils::parser::getWithParser(
                     pp_collision_name, kw_energy.c_str(), energy);
             } else if (process_type != ScatteringProcessType::ELASTIC) {

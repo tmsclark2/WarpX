@@ -44,14 +44,9 @@ protected:
 
     std::string m_collision_name;
     amrex::Vector<std::string> m_species_names;
-<<<<<<< HEAD
     int m_ndt = 1;
     CollisionSteppingMode m_collision_stepping_mode = CollisionSteppingMode::Supercycle;
     std::string m_photo_species_name;
-=======
-
-
->>>>>>> origin
 
     bool m_use_global_debye_length = false;
 
