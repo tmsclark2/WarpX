@@ -471,7 +471,6 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                               // loop through all collision pathways
                               for (int i = 0; i < process_count; i++) {
                                   auto const& scattering_process = *(scattering_processes + i);
-
                                   // get collision cross-section
                                   sigma_E = scattering_process.getCrossSection(static_cast<amrex::ParticleReal>(E_coll));
 
@@ -500,6 +499,9 @@ void BackgroundMCCCollision::doBackgroundCollisionsWithinTile
                                        == ScatteringAngleModel::Screened_Rutherford)
                                       ? scattering_process.getEta(static_cast<amrex::ParticleReal>(E_coll))
                                       : amrex::ParticleReal(0);
+                                //amrex::Print() << "E_coll" << E_coll << std::endl;
+                                //amrex::Print() << "eta" << eta << std::endl;
+                    
                                   TwoProductComputeProductMomenta(
                                       ux[ip], uy[ip], uz[ip], m,
                                       ua_x, ua_y, ua_z, M,

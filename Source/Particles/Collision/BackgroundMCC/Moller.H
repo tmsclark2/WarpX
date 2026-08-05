@@ -102,7 +102,7 @@ public:
         const amrex::ParticleReal E_min = m_mcc_process.m_energy_penalty;
         amrex::ParticleReal Z_m=15.0; //Valable in the air
         // get collision cross-section
-        if (E_coll <= 2.0_prt * E_min) {
+        if (E_coll <= E_min) {
             return false;
         }
 
@@ -271,9 +271,10 @@ public:
         e_uy = U2_norm * sin_theta2 * std::sin(phi2);
         e_uz = U2_norm * cos_theta2;
 
-        //amrex::Print() << "E1: " << E1 << std::endl;
-        //amrex::Print() << "sin_theta1: " << sin_theta1 << std::endl;
-        //amrex::Print() << "sin_theta2: " << sin_theta2 << std::endl;
+        amrex::Print() << "E1: " << E1 << std::endl;
+        amrex::Print() << "Eout: " << E_out << std::endl;
+        amrex::Print() << "sin_theta1: " << sin_theta1 << std::endl;
+        amrex::Print() << "sin_theta2: " << sin_theta2 << std::endl;
 
     }
 

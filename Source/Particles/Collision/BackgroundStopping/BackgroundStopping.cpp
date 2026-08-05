@@ -331,6 +331,7 @@ void BackgroundStopping::doBackgroundStoppingOnNeutralGasWithinTile (WarpXParIte
         [=] AMREX_GPU_HOST_DEVICE (long ip)
         {
             amrex::ParticleReal const u2 = ux[ip]*ux[ip] + uy[ip]*uy[ip] + uz[ip]*uz[ip];
+            amrex::Print() << "i am here !" << std::endl;
             if (u2 <= 0._prt) { return; }
 
             amrex::ParticleReal x, y, z;
@@ -383,13 +384,13 @@ void BackgroundStopping::doBackgroundStoppingOnNeutralGasWithinTile (WarpXParIte
             // F_D is a linear stopping power (J/m). Convert to a mass stopping power
             // (MeV*m^2/kg), as plotted in reference figures, by dividing by the
             // background mass density (assuming air here, molar mass ~28.97 g/mol).
-            //constexpr amrex::ParticleReal N_A    = 6.02214076e23_prt; // Avogadro's number, 1/mol
-            //constexpr amrex::ParticleReal M_air  = 28.97e-3_prt;      // air molar mass, kg/mol
-            //amrex::ParticleReal const rho_mass   = N_m*M_air/N_A;     // kg/m^3
-            //amrex::ParticleReal const F_D_MeV_m2_kg = F_D/(1.e6_prt*q_e)/rho_mass;
-            //amrex::Print() << "F_D " << F_D_MeV_m2_kg << " MeV*m^2/kg" << std::endl;
-            //amrex::Print() << "E " << E/q_e << " eV" << std::endl;
-            //amrex::Print() << "uz " << uz << " eV" << std::endl;
+            constexpr amrex::ParticleReal N_A    = 6.02214076e23_prt; // Avogadro's number, 1/mol
+            constexpr amrex::ParticleReal M_air  = 28.97e-3_prt;      // air molar mass, kg/mol
+            amrex::ParticleReal const rho_mass   = N_m*M_air/N_A;     // kg/m^3
+            amrex::ParticleReal const F_D_MeV_m2_kg = F_D/(1.e6_prt*q_e)/rho_mass;
+            amrex::Print() << "F_D " << F_D_MeV_m2_kg << " MeV*m^2/kg" << std::endl;
+            amrex::Print() << "E " << E/q_e << " eV" << std::endl;
+            amrex::Print() << "uz " << uz << " eV" << std::endl;
 
             ux[ip] *= scale;
             uy[ip] *= scale;
