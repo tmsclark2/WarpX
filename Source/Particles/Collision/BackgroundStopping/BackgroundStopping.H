@@ -18,6 +18,7 @@ enum class BackgroundStoppingType {
     INVALID,
     ELECTRONS,
     IONS,
+    NEUTRAL,
 };
 
 class BackgroundStopping final
@@ -65,12 +66,30 @@ public:
      */
     void doBackgroundStoppingOnIonsWithinTile (WarpXParIter& pti, amrex::Real dt, amrex::Real t,
                                                amrex::ParticleReal species_mass, amrex::ParticleReal species_charge);
-
+    /** Perform the stopping calculation within a tile for stopping on a neutral gas
+     *
+     * Dynamic-friction (Bethe) energy loss by excitation and ionization,
+     * Bethe & Ashkin 1953 p. 254 — eq. (2.2), and its restricted form eq. (2.8).
+     *
+     * @param pti particle iterator
+     * @param dt time step size
+     * @param t current simulation time
+     * @param species_mass mass of the active species
+     * @param species_charge charge of the active species
+     *
+     */
+    void doBackgroundStoppingOnNeutralGasWithinTile (WarpXParIter& pti, amrex::Real dt, amrex::Real t,
+                                                     amrex::ParticleReal species_mass, amrex::ParticleReal species_charge);
 private:
 
     amrex::ParticleReal m_background_mass;
     amrex::ParticleReal m_background_charge_state;
     BackgroundStoppingType m_background_type;
+
+    // Neutral-gas (Bethe) stopping parameters
+    amrex::ParticleReal m_background_Z = 1.0;   // Z_m : electrons per molecule
+    amrex::ParticleReal m_E_ion        = 0.0;   // ℰ_ion : ionization energy
+    amrex::ParticleReal m_E_min        = 0.0;   // ℰ_min : exclusion energy (eq. 2.8)
 
     amrex::Parser m_background_density_parser;
     amrex::Parser m_background_temperature_parser;

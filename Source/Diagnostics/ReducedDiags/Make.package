@@ -14,7 +14,6 @@ CEXE_sources += FieldProbeParticleContainer.cpp
 CEXE_sources += FieldReduction.cpp
 CEXE_sources += LoadBalanceCosts.cpp
 CEXE_sources += LoadBalanceEfficiency.cpp
-CEXE_sources += MCCSwarmParameters.cpp
 CEXE_sources += ParticleEnergy.cpp
 CEXE_sources += ParticleExtrema.cpp
 CEXE_sources += ParticleHistogram.cpp

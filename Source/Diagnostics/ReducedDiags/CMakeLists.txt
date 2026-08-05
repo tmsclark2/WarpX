@@ -17,7 +17,6 @@ foreach(D IN LISTS WarpX_DIMS)
         FieldProbe.cpp
         LoadBalanceCosts.cpp
         LoadBalanceEfficiency.cpp
-        MCCSwarmParameters.cpp
         MultiReducedDiags.cpp
         ParticleEnergy.cpp
         ParticleExtrema.cpp

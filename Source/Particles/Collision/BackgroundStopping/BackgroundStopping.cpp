@@ -6,6 +6,7 @@
  */
 #include "BackgroundStopping.H"
 
+#include "Particles/Algorithms/KineticEnergy.H"
 #include "Utils/Parser/ParserUtils.H"
 #include "Utils/ParticleUtils.H"
 #include "WarpX.H"
@@ -32,6 +33,8 @@ BackgroundStopping::BackgroundStopping (std::string const& collision_name)
         m_background_type = BackgroundStoppingType::ELECTRONS;
     } else if (background_type_str == "ions") {
         m_background_type = BackgroundStoppingType::IONS;
+    } else if (background_type_str == "neutral") {          
+        m_background_type = BackgroundStoppingType::NEUTRAL; 
     } else {
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(false, "background_type must be either electrons or ions");
     }
@@ -50,25 +53,27 @@ BackgroundStopping::BackgroundStopping (std::string const& collision_name)
         AMREX_ALWAYS_ASSERT_WITH_MESSAGE(false,
                  "For background stopping, the background density must be specified.");
     }
-
-    amrex::ParticleReal background_temperature;
-    std::string background_temperature_str;
-    if (utils::parser::queryWithParser(pp_collision_name, "background_temperature", background_temperature)) {
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(background_temperature > 0_prt,
-                 "For background stopping, the background temperature must be greater than 0");
-        m_background_temperature_parser =
-            utils::parser::makeParser(std::to_string(background_temperature), {"x", "y", "z", "t"});
-    } else if (pp_collision_name.query("background_temperature(x,y,z,t)", background_temperature_str)) {
-        m_background_temperature_parser =
-            utils::parser::makeParser(background_temperature_str, {"x", "y", "z", "t"});
-    } else {
-        AMREX_ALWAYS_ASSERT_WITH_MESSAGE(false,
-                 "For background stopping, the background temperature must be specified.");
+    if (m_background_type != BackgroundStoppingType::NEUTRAL) {
+        amrex::ParticleReal background_temperature;
+        std::string background_temperature_str;
+        if (utils::parser::queryWithParser(pp_collision_name, "background_temperature", background_temperature)) {
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(background_temperature > 0_prt,
+                     "For background stopping, the background temperature must be greater than 0");
+            m_background_temperature_parser =
+                utils::parser::makeParser(std::to_string(background_temperature), {"x", "y", "z", "t"});
+        } else if (pp_collision_name.query("background_temperature(x,y,z,t)", background_temperature_str)) {
+            m_background_temperature_parser =
+                utils::parser::makeParser(background_temperature_str, {"x", "y", "z", "t"});
+        } else {
+            AMREX_ALWAYS_ASSERT_WITH_MESSAGE(false,
+                     "For background stopping, the background temperature must be specified.");
+        }
     }
-
     constexpr auto num_parser_args = 4;
     m_background_density_func = m_background_density_parser.compile<num_parser_args>();
-    m_background_temperature_func = m_background_temperature_parser.compile<num_parser_args>();
+    if (m_background_type != BackgroundStoppingType::NEUTRAL) {                              // <-- ajout
+        m_background_temperature_func = m_background_temperature_parser.compile<num_parser_args>();
+    }                         
 
     if (m_background_type == BackgroundStoppingType::ELECTRONS) {
         m_background_mass = PhysConst::m_e;
@@ -79,7 +84,17 @@ BackgroundStopping::BackgroundStopping (std::string const& collision_name)
             pp_collision_name, "background_mass", m_background_mass);
         utils::parser::getWithParser(
             pp_collision_name, "background_charge_state", m_background_charge_state);
-    }
+    } else if (m_background_type == BackgroundStoppingType::NEUTRAL) {
+                m_background_mass = PhysConst::m_e;
+                utils::parser::getWithParser(pp_collision_name, "background_number_electrons", m_background_Z); // Z_m
+                utils::parser::getWithParser(pp_collision_name, "ionization_energy", m_E_ion);  // ℰ_ion
+                utils::parser::getWithParser(pp_collision_name, "minimum_energy",    m_E_min);  // ℰ_min
+                m_E_ion *= PhysConst::q_e;
+                m_E_min *= PhysConst::q_e;
+                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_background_Z > 0.0_prt, "background_number_electrons (Z_m) must be > 0");
+                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_E_ion       > 0.0_prt, "ionization_energy must be > 0");
+                AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_E_min       > 0.0_prt, "minimum_energy must be > 0");
+            }
     AMREX_ALWAYS_ASSERT_WITH_MESSAGE(m_background_mass > 0_prt,
              "For background stopping, the background mass must be greater than 0");
 
@@ -121,6 +136,9 @@ BackgroundStopping::doCollisions (amrex::Real cur_time, amrex::Real dt, MultiPar
                 doBackgroundStoppingOnElectronsWithinTile(pti, dt, cur_time, species_mass, species_charge);
             } else if (background_type == BackgroundStoppingType::IONS) {
                 doBackgroundStoppingOnIonsWithinTile(pti, dt, cur_time, species_mass, species_charge);
+            }
+             else if (background_type == BackgroundStoppingType::NEUTRAL) {
+                doBackgroundStoppingOnNeutralGasWithinTile(pti, dt, cur_time, species_mass, species_charge);
             }
 
             if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
@@ -287,6 +305,100 @@ void BackgroundStopping::doBackgroundStoppingOnIonsWithinTile (WarpXParIter& pti
             uy[ip] *= vscale;
             uz[ip] *= vscale;
 
+        }
+        );
+}
+void BackgroundStopping::doBackgroundStoppingOnNeutralGasWithinTile (WarpXParIter& pti, amrex::Real dt, amrex::Real t,
+                                                                     amrex::ParticleReal species_mass, amrex::ParticleReal species_charge)
+{
+    using namespace amrex::literals;
+    using std::sqrt, std::log;
+
+    amrex::ignore_unused(species_charge);
+
+    long const np = pti.numParticles();
+
+    amrex::ParticleReal const Zm    = m_background_Z;
+    amrex::ParticleReal const E_ion = m_E_ion;
+    amrex::ParticleReal const E_min = m_E_min;
+
+    auto const N_m_func = m_background_density_func;
+
+    auto& attribs = pti.GetAttribs();
+    amrex::ParticleReal* const AMREX_RESTRICT ux = attribs[PIdx::ux].dataPtr();
+    amrex::ParticleReal* const AMREX_RESTRICT uy = attribs[PIdx::uy].dataPtr();
+    amrex::ParticleReal* const AMREX_RESTRICT uz = attribs[PIdx::uz].dataPtr();
+
+    auto const GetPosition = GetParticlePosition<PIdx>(pti);
+
+    amrex::ParallelFor(np,
+        [=] AMREX_GPU_HOST_DEVICE (long ip)
+        {
+            amrex::ParticleReal const u2 = ux[ip]*ux[ip] + uy[ip]*uy[ip] + uz[ip]*uz[ip];
+            amrex::Print() << "i am here !" << std::endl;
+            if (u2 <= 0._prt) { return; }
+
+            amrex::ParticleReal x, y, z;
+            GetPosition.AsStored(ip, x, y, z);
+            amrex::ParticleReal const N_m = N_m_func(x, y, z, t);
+            AMREX_ASSERT(N_m > 0_prt);
+
+            amrex::ParticleReal constexpr c   = PhysConst::c;
+            amrex::ParticleReal const     c2  = c*c;
+            amrex::ParticleReal const     mc2 = species_mass*c2;
+
+            amrex::ParticleReal const gamma  = sqrt(1._prt + u2/c2);
+            amrex::ParticleReal const inv_g  = 1._prt/gamma;
+            amrex::ParticleReal const inv_g2 = inv_g*inv_g;
+            amrex::ParticleReal const beta2  = u2/(c2 + u2);
+            amrex::ParticleReal const v2     = beta2*c2;
+            // Using (gamma-1)*mc2 directly loses precision at low energy since
+            // gamma is then very close to 1 (catastrophic cancellation).
+            amrex::ParticleReal const E = Algorithms::KineticEnergy(ux[ip], uy[ip], uz[ip], species_mass);
+
+            amrex::ParticleReal constexpr q_e  = PhysConst::q_e;
+            amrex::ParticleReal constexpr ep0  = PhysConst::epsilon_0;
+            amrex::ParticleReal const     q_e4 = q_e*q_e*q_e*q_e;
+            amrex::ParticleReal const     kappa = q_e4 / (8._prt*MathConst::pi*ep0*ep0*species_mass*v2);
+
+            amrex::ParticleReal F_D;
+            if (E >= 2._prt*E_min) {
+                amrex::ParticleReal const mc2pE = mc2 + E;
+                F_D = N_m*Zm*kappa*(
+                        log( 2._prt*E_min*species_mass*v2 / (E_ion*E_ion*inv_g2) )
+                      - (1._prt + 2._prt*inv_g - inv_g2)*log( E/(E - E_min) )
+                      + E_min/(E - E_min) - beta2
+                      + E_min*E_min/(2._prt*mc2pE*mc2pE) );
+            } else {
+                // Same cancellation issue as above: gamma-1 loses precision at low
+                // energy, use the algebraically-equivalent stable form instead.
+                amrex::ParticleReal const gm1 = (u2/c2)/(1._prt + gamma);
+                F_D = N_m*Zm*kappa*(
+                        log( species_mass*v2*E / (E_ion*E_ion*inv_g2) )
+                      - (1._prt + 2._prt*inv_g - inv_g2)*log(2._prt)
+                      + gm1*gm1/(8._prt*gamma*gamma) + inv_g2 );
+            }
+
+            if (F_D < 0._prt) { F_D = 0._prt; }
+
+            amrex::ParticleReal const u_mag = sqrt(u2);
+            amrex::ParticleReal const du    = F_D*dt/species_mass;
+            amrex::ParticleReal const scale = (du < u_mag ? (u_mag - du)/u_mag : 0._prt);
+
+            // F_D is a linear stopping power (J/m). Convert to a mass stopping power
+            // (MeV*m^2/kg), as plotted in reference figures, by dividing by the
+            // background mass density (assuming air here, molar mass ~28.97 g/mol).
+            constexpr amrex::ParticleReal N_A    = 6.02214076e23_prt; // Avogadro's number, 1/mol
+            constexpr amrex::ParticleReal M_air  = 28.97e-3_prt;      // air molar mass, kg/mol
+            amrex::ParticleReal const rho_mass   = N_m*M_air/N_A;     // kg/m^3
+            amrex::ParticleReal const F_D_MeV_m2_kg = F_D/(1.e6_prt*q_e)/rho_mass;
+            amrex::Print() << "F_D " << F_D_MeV_m2_kg << " MeV*m^2/kg" << std::endl;
+            amrex::Print() << "E " << E/q_e << " eV" << std::endl;
+            amrex::Print() << "uz " << uz << " eV" << std::endl;
+
+            ux[ip] *= scale;
+            uy[ip] *= scale;
+            uz[ip] *= scale;
         }
         );
 }

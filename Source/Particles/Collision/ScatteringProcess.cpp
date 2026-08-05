@@ -24,10 +24,22 @@ ScatteringProcess::ScatteringProcess (
                         const ScatteringAngleModel scattering_angle_model,
                         const std::string& cross_section_file_mt )
 {
-    // read the cross-section data file(s) into memory
-    readCrossSectionFile(cross_section_file, m_energies, m_sigmas_h,
-                         cross_section_file_mt, &m_sigmas_mt_h);
-
+    if (parseProcessType(scattering_process) == ScatteringProcessType::MOLLER) {
+        // Moller scattering uses an analytic cross-section (see Moller.H and
+        // BackgroundMCCCollision::get_nu_max_moller), not a tabulated one, so no
+        // `<process>_cross_section` file is needed. This placeholder grid carries
+        // no real cross-section data (sigma = 0 everywhere) and is not used to set
+        // the energy scan range/resolution: get_nu_max_moller derives that directly
+        // from the Moller threshold energy instead (see BackgroundMCCCollision.cpp).
+        m_energies.push_back(static_cast<amrex::ParticleReal>(1e-4));
+        m_energies.push_back(static_cast<amrex::ParticleReal>(5000.0));
+        m_sigmas_h.push_back(static_cast<amrex::ParticleReal>(0.0));
+        m_sigmas_h.push_back(static_cast<amrex::ParticleReal>(0.0));
+    } else {
+        // read the cross-section data file(s) into memory
+        readCrossSectionFile(cross_section_file, m_energies, m_sigmas_h,
+                              cross_section_file_mt, &m_sigmas_mt_h);
+    }
     init(scattering_process, energy, scattering_angle_model);
 }
 
@@ -187,6 +199,8 @@ ScatteringProcess::parseProcessType(const std::string& scattering_process)
         return ScatteringProcessType::TWOPRODUCT_REACTION;
     } else if (scattering_process == "ionization") {
         return ScatteringProcessType::IONIZATION;
+    } else if (scattering_process == "moller") {
+        return ScatteringProcessType::MOLLER;
     } else if (scattering_process.find("excitation") != std::string::npos) {
         return ScatteringProcessType::EXCITATION;
     } else if (scattering_process.find("forward") != std::string::npos) {

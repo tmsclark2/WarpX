@@ -30,7 +30,8 @@ enum class ScatteringProcessType {
     IONIZATION,
     FORWARD,
     ATTACHMENT,
-    THREE_BODY
+    THREE_BODY,
+    MOLLER
 };
 
 class ScatteringProcess
