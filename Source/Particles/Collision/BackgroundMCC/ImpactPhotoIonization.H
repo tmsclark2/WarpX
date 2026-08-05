@@ -173,18 +173,18 @@ public:
         auto& i_w = dst2.m_rdata[PIdx::w][i_dst2];
         auto& e_w = dst1.m_rdata[PIdx::w][i_dst1];
 
-        auto& e_x = dst1.m_rdata[PIdx::x][i_dst1];
+#if defined(WARPX_DIM_RZ)
+        // In RZ, the radial position is stored in PIdx::r (there is no
+        // PIdx::x), and the azimuthal angle is stored separately in
+        // PIdx::theta. The photon displacement (dx, dy, dz) was computed
+        // above in the local Cartesian frame centered on the emitting
+        // particle, so it must be converted back to (r, theta) before being
+        // written out.
+        auto& e_r = dst1.m_rdata[PIdx::r][i_dst1];
         auto& e_z = dst1.m_rdata[PIdx::z][i_dst1];
-        auto& i_x = dst2.m_rdata[PIdx::x][i_dst2];
+        auto& i_r = dst2.m_rdata[PIdx::r][i_dst2];
         auto& i_z = dst2.m_rdata[PIdx::z][i_dst2];
 
-#if defined(WARPX_DIM_RZ)
-        // In RZ, PIdx::x stores the radius r (not a Cartesian x), and the
-        // azimuthal angle is stored separately in PIdx::theta. The photon
-        // displacement (dx, dy, dz) was computed above in the local
-        // Cartesian frame centered on the emitting particle, so it must be
-        // converted back to (r, theta) before being written out, instead of
-        // being written directly into the r slot.
         const double x_new = x + dx;
         const double y_new = y + dy;
         const double r_new     = std::sqrt(x_new*x_new + y_new*y_new);
@@ -193,13 +193,18 @@ public:
         auto& e_theta = dst1.m_rdata[PIdx::theta][i_dst1];
         auto& i_theta = dst2.m_rdata[PIdx::theta][i_dst2];
 
-        e_x = r_new;
-        i_x = r_new;
+        e_r = r_new;
+        i_r = r_new;
         e_z = z + dz;
         i_z = z + dz;
         e_theta = theta_new;
         i_theta = theta_new;
 #else
+        auto& e_x = dst1.m_rdata[PIdx::x][i_dst1];
+        auto& e_z = dst1.m_rdata[PIdx::z][i_dst1];
+        auto& i_x = dst2.m_rdata[PIdx::x][i_dst2];
+        auto& i_z = dst2.m_rdata[PIdx::z][i_dst2];
+
         e_x = x + dx;
         e_z = z + dz;
         i_x = x + dx;
