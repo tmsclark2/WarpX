@@ -271,11 +271,6 @@ public:
         e_uy = U2_norm * sin_theta2 * std::sin(phi2);
         e_uz = U2_norm * cos_theta2;
 
-        amrex::Print() << "E1: " << E1 << std::endl;
-        amrex::Print() << "Eout: " << E_out << std::endl;
-        amrex::Print() << "sin_theta1: " << sin_theta1 << std::endl;
-        amrex::Print() << "sin_theta2: " << sin_theta2 << std::endl;
-
     }
 
 private:
